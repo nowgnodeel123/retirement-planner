@@ -17,6 +17,9 @@ public class SimulationResponseDto {
         private long totalMonthlyIncome;
         private long targetMonthlyExpense;
         private long monthlyShortfall;
+        private int estimatedRetirementAge;
+        private String message;
+        private String shareMessage;
     }
 
     @Getter
