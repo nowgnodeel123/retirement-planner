@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: retirement-planner
+  datasource:
+    url: jdbc:postgresql://localhost:5432/retirement_planner
+    username: leedongwon
+    password:
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    open-in-view: false        # ← 추가
+    properties:
+      hibernate:
+        format_sql: true
+        # ← database-platform 줄 삭제
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
