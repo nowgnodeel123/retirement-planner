@@ -23,9 +23,12 @@ public class SimulationRequestDto {
     private Double monthlyIrpContribution;
 
     @NotNull @Min(0)
+    private Double monthlyPensionSavingsContribution;
+
+    @NotNull @Min(0)
     private Double targetMonthlyExpense;
 
     private Double irpReturnRate = 0.05;
-
     private Double pensionReturnRate = 0.04;
+    private Double pensionSavingsReturnRate = 0.06;
 }

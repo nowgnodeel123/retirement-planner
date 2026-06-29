@@ -9,6 +9,7 @@ public class SimulationResponseDto {
 
     private Summary summary;
     private Breakdown breakdown;
+    private TaxBenefit taxBenefit;
     private Meta meta;
 
     @Getter
@@ -28,6 +29,29 @@ public class SimulationResponseDto {
         private long nationalPension;
         private long retirementPension;
         private long irp;
+        private long pensionSavings;
+        private long pensionSavingsTaxBenefit;
+    }
+
+    @Getter
+    @Builder
+    public static class TaxBenefit {
+        private double taxCreditRate;
+        private String incomeLevel;
+        private long annualIncome;
+        private long currentAnnualContribution;
+        private long irpCurrentAnnual;
+        private long irpAnnualLimit;
+        private long irpRemainingLimit;
+        private long pensionSavingsCurrentAnnual;
+        private long pensionSavingsAnnualLimit;
+        private long pensionSavingsRemainingLimit;
+        private long currentTaxCredit;
+        private long maxTaxCredit;
+        private long additionalPossibleCredit;
+        private long recommendedMonthlyIrp;
+        private long recommendedMonthlyPensionSavings;
+        private String optimizationTip;
     }
 
     @Getter
@@ -35,5 +59,6 @@ public class SimulationResponseDto {
     public static class Meta {
         private int yearsUntilRetirement;
         private int totalPensionYears;
+        private double inflationRate;
     }
 }
