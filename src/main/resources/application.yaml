@@ -10,11 +10,10 @@ spring:
     hibernate:
       ddl-auto: create-drop
     show-sql: true
-    open-in-view: false        # ← 추가
+    open-in-view: false
     properties:
       hibernate:
         format_sql: true
-        # ← database-platform 줄 삭제
 
 server:
   port: 8080
@@ -22,3 +21,8 @@ server:
 logging:
   level:
     org.hibernate.SQL: DEBUG
+
+app:
+  share-url: https://retirement-planner.vercel.app
+  national-pension:
+    a-value: 319.35

@@ -2,13 +2,19 @@ package com.nowgnodeel.retirement_planner.service;
 
 import com.nowgnodeel.retirement_planner.dto.SimulationRequestDto;
 import com.nowgnodeel.retirement_planner.dto.SimulationResponseDto;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class SimulationService {
 
-    private static final double A_VALUE = 319.35;
     private static final int PAYOUT_YEARS = 25;
+
+    @Value("${app.share-url}")
+    private String shareUrl;
+
+    @Value("${app.national-pension.a-value}")
+    private double aValue;
 
     public SimulationResponseDto calculate(SimulationRequestDto req) {
         int yearsUntilRetirement = req.getRetirementAge() - req.getCurrentAge();
@@ -24,7 +30,7 @@ public class SimulationService {
 
         int estimatedRetirementAge = calculateEstimatedRetirementAge(req);
         String message = generateMessage(shortfall, req);
-        String shareMessage = estimatedRetirementAge + "세에 은퇴할 수 있대. 너는? → retirement-planner.vercel.app";
+        String shareMessage = estimatedRetirementAge + "세에 은퇴할 수 있대. 너는? → " + shareUrl;
 
         return SimulationResponseDto.builder()
                 .summary(SimulationResponseDto.Summary.builder()
@@ -74,7 +80,7 @@ public class SimulationService {
 
     private long calculateNationalPension(int totalYears, double monthlyIncome) {
         if (totalYears < 10) return 0;
-        return Math.round(0.1 * (A_VALUE + monthlyIncome) * (1 + 0.05 * (totalYears - 20)));
+        return Math.round(0.1 * (aValue + monthlyIncome) * (1 + 0.05 * (totalYears - 20)));
     }
 
     private long calculateRetirementPension(int years, double monthlyIncome, double rate) {
