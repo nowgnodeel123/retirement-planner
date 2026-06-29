@@ -152,7 +152,10 @@ Content-Type: application/json
   "summary": {
     "totalMonthlyIncome": 271,
     "targetMonthlyExpense": 300,
-    "monthlyShortfall": -29
+    "monthlyShortfall": -29,
+    "estimatedRetirementAge": 63,
+    "message": "IRP 납입액을 월 30만원 → 59만원으로...",
+    "shareMessage": "63세에 은퇴할 수 있대. 너는? →..."
   },
   "breakdown": {
     "nationalPension": 118,
