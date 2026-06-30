@@ -51,4 +51,9 @@ public class SimulationRequestDto {
     private Double depositBalance = 0.0;
     private Double depositReturnRate = 0.03;
     private Double monthlyDepositInvestment = 0.0;
+
+    // ── 건보료 정밀 계산용 (전문가 모드, 선택 입력) ──
+    private boolean usePreciseHealthInsurance = false;
+    private Double realEstateValue = 0.0;     // 부동산 가액 (만원)
+    private Double financialAssetValue = 0.0; // 금융재산 (만원, ISA/IRP/연금저축 제외)
 }

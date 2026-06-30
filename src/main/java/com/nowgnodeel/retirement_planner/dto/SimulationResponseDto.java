@@ -45,6 +45,11 @@ public class SimulationResponseDto {
         private long monthlyPensionTax;
         private long monthlyHealthInsurance;
         private long totalMonthlyTax;
+        // ── 건보료 상세 (정밀 계산 시) ──
+        private boolean isPreciseHealthInsurance;
+        private long healthInsuranceIncomePart;   // 소득 기준분
+        private long healthInsurancePropertyPart; // 재산 기준분
+        private long propertyDeductionApplied;    // 적용된 공제액 (1억원)
     }
 
     @Getter @Builder
