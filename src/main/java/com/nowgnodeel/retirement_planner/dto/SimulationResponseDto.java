@@ -9,13 +9,14 @@ public class SimulationResponseDto {
 
     private Summary summary;
     private Breakdown breakdown;
+    private TaxDetail taxDetail;
     private TaxBenefit taxBenefit;
     private Meta meta;
 
-    @Getter
-    @Builder
+    @Getter @Builder
     public static class Summary {
         private long totalMonthlyIncome;
+        private long totalMonthlyIncomeGross;
         private long targetMonthlyExpense;
         private long monthlyShortfall;
         private int estimatedRetirementAge;
@@ -23,18 +24,30 @@ public class SimulationResponseDto {
         private String shareMessage;
     }
 
-    @Getter
-    @Builder
+    @Getter @Builder
     public static class Breakdown {
         private long nationalPension;
         private long retirementPension;
+        private long retirementPensionGross;
         private long irp;
+        private long irpGross;
         private long pensionSavings;
+        private long pensionSavingsGross;
         private long pensionSavingsTaxBenefit;
+        private long stockAsset;
+        private long depositAsset;
     }
 
-    @Getter
-    @Builder
+    @Getter @Builder
+    public static class TaxDetail {
+        private double pensionIncomeTaxRate;
+        private double healthInsuranceRate;
+        private long monthlyPensionTax;
+        private long monthlyHealthInsurance;
+        private long totalMonthlyTax;
+    }
+
+    @Getter @Builder
     public static class TaxBenefit {
         private double taxCreditRate;
         private String incomeLevel;
@@ -54,11 +67,16 @@ public class SimulationResponseDto {
         private String optimizationTip;
     }
 
-    @Getter
-    @Builder
+    @Getter @Builder
     public static class Meta {
         private int yearsUntilRetirement;
         private int totalPensionYears;
         private double inflationRate;
+        private double salaryGrowthRate;
+        private int lifeExpectancy;
+        private int nationalPensionReceiptAge;
+        private String pensionType;
+        private int militaryServiceMonths;
+        private int childrenCount;
     }
 }

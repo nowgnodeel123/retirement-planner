@@ -19,11 +19,23 @@ public class SimulationRequestDto {
     @NotNull @Min(0)
     private Integer pensionYearsPaid;
 
+    private String pensionType = "DC";
+
+    private String nationalPensionReceiptType = "NORMAL";
+    private Integer nationalPensionReceiptAge;
+
+    private Integer militaryServiceMonths = 0;
+    private Integer childrenCount = 0;
+
     @NotNull @Min(0)
     private Double monthlyIrpContribution;
 
+    private Double currentIrpBalance = 0.0;
+
     @NotNull @Min(0)
     private Double monthlyPensionSavingsContribution;
+
+    private Double currentPensionSavingsBalance = 0.0;
 
     @NotNull @Min(0)
     private Double targetMonthlyExpense;
@@ -31,4 +43,12 @@ public class SimulationRequestDto {
     private Double irpReturnRate = 0.05;
     private Double pensionReturnRate = 0.04;
     private Double pensionSavingsReturnRate = 0.06;
+
+    private Double stockAssetBalance = 0.0;
+    private Double stockReturnRate = 0.07;
+    private Double monthlyStockInvestment = 0.0;
+
+    private Double depositBalance = 0.0;
+    private Double depositReturnRate = 0.03;
+    private Double monthlyDepositInvestment = 0.0;
 }
