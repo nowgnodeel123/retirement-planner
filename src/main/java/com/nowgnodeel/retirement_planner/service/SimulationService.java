@@ -9,8 +9,21 @@ import org.springframework.stereotype.Service;
 public class SimulationService {
 
     private static final double INFLATION_RATE = 0.025;
-    private static final double SALARY_GROWTH_RATE = 0.05;
     private static final int LIFE_EXPECTANCY = 90;
+    private static final double POST_RETIREMENT_NOMINAL_RATE = 0.03;
+
+    // ── 생애 연봉 곡선 (단순화 모델) ──
+    // 20~44세: 연 5% 상승 (경력 성장기)
+    // 45~49세: 연 1% 상승 (정점 근접)
+    // 50~59세: 0% (정체, 임금피크제)
+    // 60세 이후: 연 -2% (재취업/이직 시 하락 가정)
+    private static final int GROWTH_PHASE_END_AGE = 44;
+    private static final int SLOWDOWN_PHASE_END_AGE = 49;
+    private static final int PLATEAU_PHASE_END_AGE = 59;
+    private static final double GROWTH_RATE = 0.05;
+    private static final double SLOWDOWN_RATE = 0.01;
+    private static final double PLATEAU_RATE = 0.0;
+    private static final double DECLINE_RATE = -0.02;
 
     private static final double INCOME_REPLACEMENT_COEFFICIENT = 0.1075;
     private static final double NATIONAL_PENSION_INCOME_CAP = 637.0;
@@ -35,13 +48,13 @@ public class SimulationService {
     private static final double HEALTH_INSURANCE_RATE = 0.0709;
     private static final double NATIONAL_PENSION_INCOME_RATIO = 0.5;
 
-    // ── 건보료 재산보험료 (2024.2~ 기준) ──
-    private static final double PROPERTY_DEDUCTION = 10000.0; // 재산공제 1억원
-    private static final double PROPERTY_INSURANCE_RATE = 0.000911; // 재산 점수당 근사 요율 (단순화)
+    private static final double PROPERTY_DEDUCTION = 10000.0;
+    private static final double PROPERTY_INSURANCE_RATE = 0.000911;
 
     private static final double STOCK_TAX_RATE = 0.22;
     private static final double STOCK_TAX_EXEMPT = 250.0;
-    private static final double DEPOSIT_TAX_RATE = 0.154;
+
+    private static final String MONTHLY_AMOUNT_SUFFIX = "만원";
 
     @Value("${app.share-url}")
     private String shareUrl;
@@ -49,44 +62,70 @@ public class SimulationService {
     @Value("${app.national-pension.a-value}")
     private double aValue;
 
+    // ── 특정 나이의 연봉을 생애 곡선 기준으로 계산 ──
+    // currentAge에 currentSalary를 갖고 있다고 가정하고, targetAge 시점의 연봉을 역산/예측한다.
+    private double projectSalaryAtAge(double currentSalary, int currentAge, int targetAge) {
+        if (targetAge == currentAge) return currentSalary;
+
+        if (targetAge > currentAge) {
+            double salary = currentSalary;
+            for (int age = currentAge; age < targetAge; age++) {
+                salary *= (1 + annualGrowthRateAt(age));
+            }
+            return salary;
+        } else {
+            double salary = currentSalary;
+            for (int age = currentAge - 1; age >= targetAge; age--) {
+                salary /= (1 + annualGrowthRateAt(age));
+            }
+            return salary;
+        }
+    }
+
+    // 해당 나이에서 다음 해로 넘어갈 때 적용되는 성장률
+    private double annualGrowthRateAt(int age) {
+        if (age <= GROWTH_PHASE_END_AGE) return GROWTH_RATE;
+        if (age <= SLOWDOWN_PHASE_END_AGE) return SLOWDOWN_RATE;
+        if (age <= PLATEAU_PHASE_END_AGE) return PLATEAU_RATE;
+        return DECLINE_RATE;
+    }
+
     public SimulationResponseDto calculate(SimulationRequestDto req) {
-        int yearsUntilRetirement = req.getRetirementAge() - req.getCurrentAge();
-        int payoutYears = LIFE_EXPECTANCY - req.getRetirementAge();
+
+        int estimatedRetirementAge = calculateEstimatedRetirementAge(req);
+        int yearsUntilRetirement = estimatedRetirementAge - req.getCurrentAge();
+        int payoutYears = LIFE_EXPECTANCY - estimatedRetirementAge;
 
         int childCredit = calculateChildCredit(req.getChildrenCount());
-        int militaryCredit = Math.min(req.getMilitaryServiceMonths(), MAX_MILITARY_CREDIT_MONTHS) / 12;
+        int militaryCredit = Math.clamp(req.getMilitaryServiceMonths(), 0, MAX_MILITARY_CREDIT_MONTHS) / 12;
         int totalPensionYears = req.getPensionYearsPaid() + yearsUntilRetirement + childCredit + militaryCredit;
         int pensionReceiptAge = determinePensionReceiptAge(req);
 
-        long nationalPensionGross = calculateNationalPension(req, totalPensionYears, pensionReceiptAge);
+        long nationalPensionGross = calculateNationalPension(req, totalPensionYears, pensionReceiptAge, estimatedRetirementAge);
 
-        long retirementPensionGross = calculateRetirementPension(req, yearsUntilRetirement, payoutYears, false);
-        long retirementPensionAfterTax = calculateRetirementPension(req, yearsUntilRetirement, payoutYears, true);
+        long retirementPensionGross = calculateRetirementPension(req, yearsUntilRetirement, payoutYears, estimatedRetirementAge, false);
+        long retirementPensionAfterTax = calculateRetirementPension(req, yearsUntilRetirement, payoutYears, estimatedRetirementAge, true);
 
         long irpGross = calculateIrpOrPensionSavings(yearsUntilRetirement, req.getMonthlyIrpContribution() * 12, req.getCurrentIrpBalance(), req.getIrpReturnRate(), payoutYears);
         long pensionSavingsGross = calculateIrpOrPensionSavings(yearsUntilRetirement, req.getMonthlyPensionSavingsContribution() * 12, req.getCurrentPensionSavingsBalance(), req.getPensionSavingsReturnRate(), payoutYears);
 
         long privatePensionPoolGross = irpGross + pensionSavingsGross;
-        double privatePensionTaxRate = calculatePrivatePensionTaxRate(req.getRetirementAge(), privatePensionPoolGross);
+        double privatePensionTaxRate = calculatePrivatePensionTaxRate(estimatedRetirementAge, privatePensionPoolGross);
         long irpAfterTax = Math.round(irpGross * (1 - privatePensionTaxRate));
         long pensionSavingsAfterTax = Math.round(pensionSavingsGross * (1 - privatePensionTaxRate));
 
         long stockMonthly = calculateStockAsset(req, yearsUntilRetirement, payoutYears);
-        long depositMonthly = calculateDepositAsset(req, yearsUntilRetirement, payoutYears);
 
-        // ── 건강보험료 (간이 or 정밀 선택) ──
         HealthInsuranceResult hiResult = calculateHealthInsurance(req, nationalPensionGross);
         long healthInsurance = hiResult.total;
         long nationalPensionAfterTax = Math.max(0, nationalPensionGross - healthInsurance);
 
-        long totalGross = nationalPensionGross + retirementPensionGross + irpGross + pensionSavingsGross + stockMonthly + depositMonthly;
-        long totalAfterTax = nationalPensionAfterTax + retirementPensionAfterTax + irpAfterTax + pensionSavingsAfterTax + stockMonthly + depositMonthly;
+        long totalGross = nationalPensionGross + retirementPensionGross + irpGross + pensionSavingsGross + stockMonthly;
+        long totalAfterTax = nationalPensionAfterTax + retirementPensionAfterTax + irpAfterTax + pensionSavingsAfterTax + stockMonthly;
 
         long target = Math.round(req.getTargetMonthlyExpense());
         long shortfall = totalAfterTax - target;
 
-        int estimatedRetirementAge = calculateEstimatedRetirementAge(req);
-        int estimatedYearsUntilRetirement = estimatedRetirementAge - req.getCurrentAge();
         String message = generateMessage(shortfall, req, estimatedRetirementAge);
         String shareMessage = estimatedRetirementAge + "세에 은퇴할 수 있대. 너는? → " + shareUrl;
 
@@ -114,7 +153,6 @@ public class SimulationService {
                         .pensionSavingsGross(pensionSavingsGross)
                         .pensionSavingsTaxBenefit(calculatePensionSavingsTaxBenefit(req.getMonthlyPensionSavingsContribution()))
                         .stockAsset(stockMonthly)
-                        .depositAsset(depositMonthly)
                         .build())
                 .taxDetail(SimulationResponseDto.TaxDetail.builder()
                         .pensionIncomeTaxRate(privatePensionTaxRate * 100)
@@ -129,10 +167,11 @@ public class SimulationService {
                         .build())
                 .taxBenefit(calculateTaxBenefit(req))
                 .meta(SimulationResponseDto.Meta.builder()
-                        .yearsUntilRetirement(estimatedYearsUntilRetirement)
+                        .yearsUntilRetirement(yearsUntilRetirement)
                         .totalPensionYears(totalPensionYears)
                         .inflationRate(INFLATION_RATE)
-                        .salaryGrowthRate(SALARY_GROWTH_RATE)
+                        .salaryGrowthRate(GROWTH_RATE)
+                        .postRetirementReturnRate(POST_RETIREMENT_NOMINAL_RATE)
                         .lifeExpectancy(LIFE_EXPECTANCY)
                         .nationalPensionReceiptAge(pensionReceiptAge)
                         .pensionType(req.getPensionType())
@@ -142,7 +181,6 @@ public class SimulationService {
                 .build();
     }
 
-    // ── 건보료 계산 결과 묶음 ──
     private static class HealthInsuranceResult {
         long total;
         long incomePart;
@@ -150,12 +188,6 @@ public class SimulationService {
         boolean isPrecise;
     }
 
-    /**
-     * 건보료 계산
-     * - 기본(간이): 국민연금 × 50% × 7.09%
-     * - 정밀(전문가 모드): 위 소득분 + 재산분(부동산+금융재산-1억원 공제) × 근사요율
-     *   ※ 자동차는 2024.2~ 건보료 부과 대상에서 제외되어 계산하지 않음
-     */
     private HealthInsuranceResult calculateHealthInsurance(SimulationRequestDto req, long nationalPensionGross) {
         HealthInsuranceResult result = new HealthInsuranceResult();
         long incomePart = Math.round(nationalPensionGross * NATIONAL_PENSION_INCOME_RATIO * HEALTH_INSURANCE_RATE);
@@ -181,10 +213,10 @@ public class SimulationService {
 
     private int determinePensionReceiptAge(SimulationRequestDto req) {
         if ("EARLY".equals(req.getNationalPensionReceiptType()) && req.getNationalPensionReceiptAge() != null) {
-            return Math.max(NATIONAL_PENSION_EARLY_MIN_AGE, Math.min(NATIONAL_PENSION_NORMAL_AGE - 1, req.getNationalPensionReceiptAge()));
+            return Math.clamp(req.getNationalPensionReceiptAge(), NATIONAL_PENSION_EARLY_MIN_AGE, NATIONAL_PENSION_NORMAL_AGE - 1);
         }
         if ("LATE".equals(req.getNationalPensionReceiptType()) && req.getNationalPensionReceiptAge() != null) {
-            return Math.max(NATIONAL_PENSION_NORMAL_AGE + 1, Math.min(NATIONAL_PENSION_LATE_MAX_AGE, req.getNationalPensionReceiptAge()));
+            return Math.clamp(req.getNationalPensionReceiptAge(), NATIONAL_PENSION_NORMAL_AGE + 1, NATIONAL_PENSION_LATE_MAX_AGE);
         }
         return NATIONAL_PENSION_NORMAL_AGE;
     }
@@ -196,9 +228,9 @@ public class SimulationService {
         return 2 + (childrenCount - 2);
     }
 
-    private long calculateNationalPension(SimulationRequestDto req, int totalPensionYears, int receiptAge) {
+    private long calculateNationalPension(SimulationRequestDto req, int totalPensionYears, int receiptAge, int retirementAge) {
         if (totalPensionYears < 10) return 0;
-        double avgB = calculateAverageSalaryB(req.getMonthlyIncome(), req.getRetirementAge() - req.getCurrentAge(), req.getPensionYearsPaid());
+        double avgB = calculateAverageSalaryB(req.getMonthlyIncome(), req.getCurrentAge(), retirementAge, req.getPensionYearsPaid());
         double basicPension = INCOME_REPLACEMENT_COEFFICIENT * (aValue + avgB) * (1 + 0.05 * (totalPensionYears - 20));
 
         if (receiptAge < NATIONAL_PENSION_NORMAL_AGE) {
@@ -209,36 +241,44 @@ public class SimulationService {
         return Math.max(0, Math.round(basicPension));
     }
 
-    private double calculateAverageSalaryB(double currentSalary, int yearsUntilRetirement, int pensionYearsPaid) {
-        double totalIncome = Math.min(currentSalary, NATIONAL_PENSION_INCOME_CAP);
-        for (int i = pensionYearsPaid; i >= 1; i--) {
-            totalIncome += Math.min(currentSalary / Math.pow(1 + SALARY_GROWTH_RATE, i), NATIONAL_PENSION_INCOME_CAP);
+    // ── 경력 평균 소득(B값): 생애 연봉 곡선 기준으로 입사~은퇴까지 매년 소득 추정 후 평균 ──
+    private double calculateAverageSalaryB(double currentSalary, int currentAge, int retirementAge, int pensionYearsPaid) {
+        int startAge = currentAge - pensionYearsPaid;
+        double totalIncome = 0;
+        int count = 0;
+        for (int age = startAge; age < retirementAge; age++) {
+            double salaryAtAge = projectSalaryAtAge(currentSalary, currentAge, age);
+            totalIncome += Math.min(salaryAtAge, NATIONAL_PENSION_INCOME_CAP);
+            count++;
         }
-        for (int i = 1; i <= yearsUntilRetirement; i++) {
-            totalIncome += Math.min(currentSalary * Math.pow(1 + SALARY_GROWTH_RATE, i), NATIONAL_PENSION_INCOME_CAP);
-        }
-        return totalIncome / (pensionYearsPaid + yearsUntilRetirement + 1);
+        return count > 0 ? totalIncome / count : currentSalary;
     }
 
-    private long calculateRetirementPension(SimulationRequestDto req, int years, int payoutYears, boolean afterTax) {
+    // ── 퇴직연금: 적립은 생애 연봉 곡선 + 입력 수익률, 인출은 보수적 고정 수익률 ──
+    private long calculateRetirementPension(SimulationRequestDto req, int years, int payoutYears, int retirementAge, boolean afterTax) {
         if (years <= 0) return 0;
-        double lumpSum = calculateRetirementLumpSum(req, years);
-        double rate = "DB".equals(req.getPensionType()) ? realRate(0.03) : realRate(req.getPensionReturnRate());
+        double lumpSum = calculateRetirementLumpSum(req, years, retirementAge);
+        double payoutRate = realRate(POST_RETIREMENT_NOMINAL_RATE);
         double payoutBase = afterTax ? applyRetirementIncomeTax(lumpSum, years, payoutYears) : lumpSum;
-        return calculateAnnuityPayment(payoutBase, rate, payoutYears * 12);
+        return calculateAnnuityPayment(payoutBase, payoutRate, payoutYears * 12);
     }
 
-    private double calculateRetirementLumpSum(SimulationRequestDto req, int years) {
+    private double calculateRetirementLumpSum(SimulationRequestDto req, int years, int retirementAge) {
         if ("DB".equals(req.getPensionType())) {
-            double finalSalary = req.getMonthlyIncome() * Math.pow(1 + SALARY_GROWTH_RATE, years);
+            double finalSalary = projectSalaryAtAge(req.getMonthlyIncome(), req.getCurrentAge(), retirementAge);
             return finalSalary * years;
         }
+
+        // DC형: 매년 그 해 연봉의 1개월치를 적립, 적립 후 입력 수익률로 복리 운용
         double realReturn = realRate(req.getPensionReturnRate());
-        double realGrowth = realRate(SALARY_GROWTH_RATE);
-        if (Math.abs(realReturn - realGrowth) < 0.0001) {
-            return req.getMonthlyIncome() * years * Math.pow(1 + realReturn, years);
+        double fv = 0;
+        for (int i = 0; i < years; i++) {
+            int contributionAge = req.getCurrentAge() + i;
+            double annualSalaryAtContribution = projectSalaryAtAge(req.getMonthlyIncome(), req.getCurrentAge(), contributionAge);
+            int remainingYears = years - i;
+            fv += annualSalaryAtContribution * Math.pow(1 + realReturn, remainingYears);
         }
-        return req.getMonthlyIncome() * (Math.pow(1 + realReturn, years) - Math.pow(1 + realGrowth, years)) / (realReturn - realGrowth);
+        return fv;
     }
 
     private double applyRetirementIncomeTax(double lumpSum, double serviceYears, int payoutYears) {
@@ -282,15 +322,16 @@ public class SimulationService {
     }
 
     private long calculateIrpOrPensionSavings(int years, double annualContribution, double currentBalance, double returnRate, int payoutYears) {
-        double realReturn = realRate(returnRate);
-        double existingFv = currentBalance > 0 ? currentBalance * Math.pow(1 + realReturn, years) : 0;
+        double accumulationRate = realRate(returnRate);
+        double existingFv = currentBalance > 0 ? currentBalance * Math.pow(1 + accumulationRate, years) : 0;
         double newFv = 0;
         if (annualContribution > 0 && years > 0) {
-            newFv = realReturn != 0
-                    ? annualContribution * (Math.pow(1 + realReturn, years) - 1) / realReturn
+            newFv = accumulationRate != 0
+                    ? annualContribution * (Math.pow(1 + accumulationRate, years) - 1) / accumulationRate
                     : annualContribution * years;
         }
-        return calculateAnnuityPayment(existingFv + newFv, realReturn, payoutYears * 12);
+        double payoutRate = realRate(POST_RETIREMENT_NOMINAL_RATE);
+        return calculateAnnuityPayment(existingFv + newFv, payoutRate, payoutYears * 12);
     }
 
     private double calculatePrivatePensionTaxRate(int retirementAge, long monthlyPrivatePensionGross) {
@@ -331,30 +372,19 @@ public class SimulationService {
 
     private long calculateStockAsset(SimulationRequestDto req, int years, int payoutYears) {
         if (req.getStockAssetBalance() == 0 && req.getMonthlyStockInvestment() == 0) return 0;
-        double realReturn = realRate(req.getStockReturnRate());
-        double existingFv = req.getStockAssetBalance() * Math.pow(1 + realReturn, years);
-        double newFv = req.getMonthlyStockInvestment() > 0 && realReturn != 0 && years > 0
-                ? req.getMonthlyStockInvestment() * 12 * (Math.pow(1 + realReturn, years) - 1) / realReturn : 0;
+        double accumulationRate = realRate(req.getStockReturnRate());
+        double existingFv = req.getStockAssetBalance() * Math.pow(1 + accumulationRate, years);
+        double newFv = req.getMonthlyStockInvestment() > 0 && accumulationRate != 0 && years > 0
+                ? req.getMonthlyStockInvestment() * 12 * (Math.pow(1 + accumulationRate, years) - 1) / accumulationRate : 0;
         double totalFv = existingFv + newFv;
         double totalCost = req.getStockAssetBalance() + req.getMonthlyStockInvestment() * 12 * years;
         double totalGain = Math.max(0, totalFv - totalCost);
         double annualGain = years > 0 ? totalGain / years : 0;
         double annualTax = Math.max(0, annualGain - STOCK_TAX_EXEMPT) * STOCK_TAX_RATE;
         double fvAfterTax = Math.max(0, totalFv - annualTax * years);
-        return calculateAnnuityPayment(fvAfterTax, realReturn, payoutYears * 12);
-    }
 
-    private long calculateDepositAsset(SimulationRequestDto req, int years, int payoutYears) {
-        if (req.getDepositBalance() == 0 && req.getMonthlyDepositInvestment() == 0) return 0;
-        double realReturn = realRate(req.getDepositReturnRate());
-        double existingFv = req.getDepositBalance() * Math.pow(1 + realReturn, years);
-        double newFv = req.getMonthlyDepositInvestment() > 0 && realReturn != 0 && years > 0
-                ? req.getMonthlyDepositInvestment() * 12 * (Math.pow(1 + realReturn, years) - 1) / realReturn : 0;
-        double totalFv = existingFv + newFv;
-        double totalCost = req.getDepositBalance() + req.getMonthlyDepositInvestment() * 12 * years;
-        double interest = Math.max(0, totalFv - totalCost);
-        double fvAfterTax = totalFv - interest * DEPOSIT_TAX_RATE;
-        return payoutYears > 0 ? Math.round(Math.max(0, fvAfterTax) / (payoutYears * 12)) : 0;
+        double payoutRate = realRate(POST_RETIREMENT_NOMINAL_RATE);
+        return calculateAnnuityPayment(fvAfterTax, payoutRate, payoutYears * 12);
     }
 
     private long calculateAnnuityPayment(double fv, double annualRate, int months) {
@@ -382,15 +412,15 @@ public class SimulationService {
         if (payoutYears <= 0) return 0;
 
         int childCredit = calculateChildCredit(req.getChildrenCount());
-        int militaryCredit = Math.min(req.getMilitaryServiceMonths(), MAX_MILITARY_CREDIT_MONTHS) / 12;
+        int militaryCredit = Math.clamp(req.getMilitaryServiceMonths(), 0, MAX_MILITARY_CREDIT_MONTHS) / 12;
         int totalPensionYears = req.getPensionYearsPaid() + years + childCredit + militaryCredit;
         int pensionReceiptAge = determinePensionReceiptAge(req);
 
-        long np = calculateNationalPension(req, totalPensionYears, pensionReceiptAge);
+        long np = calculateNationalPension(req, totalPensionYears, pensionReceiptAge, age);
         HealthInsuranceResult hi = calculateHealthInsurance(req, np);
         long npAfterTax = Math.max(0, np - hi.total);
 
-        long rpAfterTax = calculateRetirementPension(req, years, payoutYears, true);
+        long rpAfterTax = calculateRetirementPension(req, years, payoutYears, age, true);
 
         long irp = calculateIrpOrPensionSavings(years, irpMonthly * 12, req.getCurrentIrpBalance(), req.getIrpReturnRate(), payoutYears);
         long ps = calculateIrpOrPensionSavings(years, psMonthly * 12, req.getCurrentPensionSavingsBalance(), req.getPensionSavingsReturnRate(), payoutYears);
@@ -399,9 +429,8 @@ public class SimulationService {
         long privateAfterTax = Math.round(privatePool * (1 - privateRate));
 
         long stock = calculateStockAsset(req, years, payoutYears);
-        long deposit = calculateDepositAsset(req, years, payoutYears);
 
-        return npAfterTax + rpAfterTax + privateAfterTax + stock + deposit;
+        return npAfterTax + rpAfterTax + privateAfterTax + stock;
     }
 
     private SimulationResponseDto.TaxBenefit calculateTaxBenefit(SimulationRequestDto req) {
@@ -436,22 +465,24 @@ public class SimulationService {
 
     private String generateOptimizationTip(long irpRemaining, long psRemaining, long additionalCredit) {
         if (additionalCredit == 0) return "세액공제를 최대로 활용하고 있습니다! 🎉";
-        StringBuilder tip = new StringBuilder();
+
+        String contributionPart;
         if (psRemaining > 0 && irpRemaining > 0) {
-            tip.append("연금저축 월 ").append(Math.round(psRemaining / 12.0)).append("만원 + IRP 월 ").append(Math.round(irpRemaining / 12.0)).append("만원 더 납입하면 ");
+            contributionPart = "연금저축 월 " + Math.round(psRemaining / 12.0) + MONTHLY_AMOUNT_SUFFIX
+                    + " + IRP 월 " + Math.round(irpRemaining / 12.0) + MONTHLY_AMOUNT_SUFFIX;
         } else if (psRemaining > 0) {
-            tip.append("연금저축을 월 ").append(Math.round(psRemaining / 12.0)).append("만원 더 납입하면 ");
-        } else if (irpRemaining > 0) {
-            tip.append("IRP를 월 ").append(Math.round(irpRemaining / 12.0)).append("만원 더 납입하면 ");
+            contributionPart = "연금저축을 월 " + Math.round(psRemaining / 12.0) + MONTHLY_AMOUNT_SUFFIX;
+        } else {
+            contributionPart = "IRP를 월 " + Math.round(irpRemaining / 12.0) + MONTHLY_AMOUNT_SUFFIX;
         }
-        tip.append("연 ").append(additionalCredit).append("만원을 추가로 돌려받을 수 있습니다.");
-        return tip.toString();
+
+        return contributionPart + " 더 납입하면 연 " + additionalCredit + "만원을 추가로 돌려받을 수 있습니다.";
     }
 
     private String generateMessage(long shortfall, SimulationRequestDto req, int estimatedRetirementAge) {
-        if (shortfall >= 0) return "목표 달성! 지금 페이스라면 " + estimatedRetirementAge + "세에 은퇴할 수 있습니다. 🎉";
+        if (shortfall >= 0) return "축하합니다! 지금 페이스라면 " + estimatedRetirementAge + "세에 은퇴할 수 있습니다. 🎉";
         long neededIrp = req.getMonthlyIrpContribution().longValue() + Math.abs(shortfall);
-        return "IRP 납입액을 월 " + req.getMonthlyIrpContribution().longValue() + "만원 → " + neededIrp + "만원으로 늘리면 목표를 달성할 수 있습니다.";
+        return "IRP 납입액을 월 " + req.getMonthlyIrpContribution().longValue() + "만원 → " + neededIrp + "만원으로 늘리면 더 빨리 은퇴할 수 있습니다.";
     }
 
     private double realRate(double nominalRate) {

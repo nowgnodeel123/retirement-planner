@@ -35,7 +35,6 @@ public class SimulationResponseDto {
         private long pensionSavingsGross;
         private long pensionSavingsTaxBenefit;
         private long stockAsset;
-        private long depositAsset;
     }
 
     @Getter @Builder
@@ -45,11 +44,10 @@ public class SimulationResponseDto {
         private long monthlyPensionTax;
         private long monthlyHealthInsurance;
         private long totalMonthlyTax;
-        // ── 건보료 상세 (정밀 계산 시) ──
         private boolean isPreciseHealthInsurance;
-        private long healthInsuranceIncomePart;   // 소득 기준분
-        private long healthInsurancePropertyPart; // 재산 기준분
-        private long propertyDeductionApplied;    // 적용된 공제액 (1억원)
+        private long healthInsuranceIncomePart;
+        private long healthInsurancePropertyPart;
+        private long propertyDeductionApplied;
     }
 
     @Getter @Builder
@@ -78,6 +76,7 @@ public class SimulationResponseDto {
         private int totalPensionYears;
         private double inflationRate;
         private double salaryGrowthRate;
+        private double postRetirementReturnRate;
         private int lifeExpectancy;
         private int nationalPensionReceiptAge;
         private String pensionType;
