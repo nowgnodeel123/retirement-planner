@@ -1,19 +1,39 @@
 spring:
   application:
     name: retirement-planner
+
   datasource:
-    url: jdbc:postgresql://localhost:5432/retirement_planner
-    username: leedongwon
-    password:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/retirement_planner}
+    username: ${DB_USERNAME:leedongwon}
+    password: ${DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
+
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate   # create-drop → validate — 스키마는 Flyway가 관리 (D-080)
     show-sql: true
     open-in-view: false
     properties:
       hibernate:
         format_sql: true
+
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            client-id: ${KAKAO_CLIENT_ID}
+            client-secret: ${KAKAO_CLIENT_SECRET:}
+            redirect-uri: "{baseUrl}/login/oauth2/code/kakao"
+            authorization-grant-type: authorization_code
+            client-authentication-method: client_secret_post
+            scope: profile_nickname, account_email
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
 
 server:
   port: 8080
@@ -22,7 +42,12 @@ logging:
   level:
     org.hibernate.SQL: DEBUG
 
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-validity-ms: 604800000   # 7일 (D-081) — 리프레시 토큰 없음
+
 app:
   share-url: https://retirement-planner.vercel.app
+  frontend-callback-url: ${FRONTEND_CALLBACK_URL:http://localhost:3000/auth/callback}
   national-pension:
     a-value: 319.35
