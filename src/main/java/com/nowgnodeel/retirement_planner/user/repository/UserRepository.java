@@ -1,5 +1,7 @@
 package com.nowgnodeel.retirement_planner.user.repository;
 
+import com.nowgnodeel.retirement_planner.user.entity.AuthProvider;
+import com.nowgnodeel.retirement_planner.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
