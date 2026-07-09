@@ -18,7 +18,7 @@ CREATE TABLE assets (
     category            VARCHAR(20)  NOT NULL,
     name                VARCHAR(100) NOT NULL,
     symbol              VARCHAR(30),
-    currency            CHAR(3)      NOT NULL DEFAULT 'KRW',
+    currency            VARCHAR(3)   NOT NULL DEFAULT 'KRW',
     cash                NUMERIC(18, 2),
     cash_cost           NUMERIC(18, 2),
     source              VARCHAR(10)  NOT NULL DEFAULT 'MANUAL',

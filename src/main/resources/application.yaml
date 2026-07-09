@@ -10,7 +10,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate   # create-drop → validate — 스키마는 Flyway가 관리 (D-080)
+      ddl-auto: validate
     show-sql: true
     open-in-view: false
     properties:
@@ -44,7 +44,7 @@ logging:
 
 jwt:
   secret: ${JWT_SECRET}
-  access-token-validity-ms: 604800000   # 7일 (D-081) — 리프레시 토큰 없음
+  access-token-validity-ms: 604800000
 
 app:
   share-url: https://retirement-planner.vercel.app
