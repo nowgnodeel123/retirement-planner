@@ -1,7 +1,7 @@
 package com.nowgnodeel.retirement_planner.common.config;
 
-import com.nowgnodeel.retirement_planner.auth.CustomOAuth2UserService;
-import com.nowgnodeel.retirement_planner.auth.OAuth2SuccessHandler;
+import com.nowgnodeel.retirement_planner.auth.oauth.CustomOAuth2UserService;
+import com.nowgnodeel.retirement_planner.auth.oauth.OAuth2SuccessHandler;
 import com.nowgnodeel.retirement_planner.common.security.JwtAuthenticationFilter;
 import com.nowgnodeel.retirement_planner.common.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
