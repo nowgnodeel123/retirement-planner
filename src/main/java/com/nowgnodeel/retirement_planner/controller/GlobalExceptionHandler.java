@@ -49,4 +49,13 @@ public class GlobalExceptionHandler {
         body.put("error", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
+
+    // controller/GlobalExceptionHandler.java 에 핸들러 1개 추가
+    @ExceptionHandler(com.nowgnodeel.retirement_planner.common.exception.NotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNotFound(
+            com.nowgnodeel.retirement_planner.common.exception.NotFoundException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
 }
