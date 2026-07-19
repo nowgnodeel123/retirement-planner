@@ -70,4 +70,9 @@ public class User {
     public void syncKakaoProfile(String nickname) {
         this.nickname = nickname;
     }
+
+    // 마이페이지 닉네임 수정용. syncKakaoProfile은 OAuth 동기화 전용이라 의도 구분을 위해 별도 메서드로 분리.
+    public void updateNickname(String nickname) {
+        this.nickname = nickname;
+    }
 }
