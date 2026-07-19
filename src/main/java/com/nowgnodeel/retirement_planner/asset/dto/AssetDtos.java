@@ -30,7 +30,11 @@ public class AssetDtos {
             String name,
             String category,
             String currency,
-            BigDecimal quantity,     // 매수합 (M3은 매도 없음, 매도는 M6)
-            BigDecimal averagePrice  // 매수총액 / 매수수량, D-050 파생값
+            BigDecimal quantity,
+            BigDecimal averagePrice,
+            BigDecimal currentPrice,       // null이면 시세 조회 실패 → 프론트 배너(D-058)
+            BigDecimal evaluationAmount,   // currentPrice * quantity, null 가능
+            BigDecimal profitAmount,       // evaluationAmount - 매수총액, null 가능
+            BigDecimal profitRate          // %, null 가능. D-049: 양수=빨강/음수=파랑은 프론트 처리
     ) {}
 }

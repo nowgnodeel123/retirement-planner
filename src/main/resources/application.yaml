@@ -51,3 +51,9 @@ app:
   frontend-callback-url: ${FRONTEND_CALLBACK_URL:http://localhost:3000/auth/callback}
   national-pension:
     a-value: 319.35
+
+price-api:
+  data-go-kr:
+    key: ${DATA_GO_KR_API_KEY}
+  finnhub:
+    key: ${FINNHUB_API_KEY}

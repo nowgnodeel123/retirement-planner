@@ -2,6 +2,7 @@
 package com.nowgnodeel.retirement_planner.asset.service;
 
 import com.nowgnodeel.retirement_planner.asset.entity.*;
+import com.nowgnodeel.retirement_planner.asset.price.PriceService;
 import com.nowgnodeel.retirement_planner.asset.repository.*;
 import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.Optional;
 
 import static com.nowgnodeel.retirement_planner.asset.dto.AssetDtos.*;
 
@@ -22,6 +24,7 @@ public class AssetService {
     private final AssetRepository assetRepository;
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
+    private final PriceService priceService; // 필드 추가 (RequiredArgsConstructor라 생성자 자동 반영)
 
     @Transactional
     public HoldingResponse buy(Long userId, BuyRequest request) {
@@ -65,7 +68,7 @@ public class AssetService {
                 .toList();
     }
 
-    // D-050: 파생값 계산. M3 시점은 매수만 존재(매도는 M6에서 추가 후 재계산 로직 확장 필요)
+    // D-050: 파생값 계산 + M4: 현재가/평가금액/손익률 반영
     private HoldingResponse toHoldingResponse(Asset asset) {
         List<Transaction> txs = transactionRepository.findAllByAssetIdOrderByTradeDateAsc(asset.getId());
 
@@ -81,9 +84,27 @@ public class AssetService {
                 ? buyAmount.divide(buyQty, 4, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
+        BigDecimal currentPrice = null;
+        BigDecimal evaluationAmount = null;
+        BigDecimal profitAmount = null;
+        BigDecimal profitRate = null;
+
+        if (buyQty.compareTo(BigDecimal.ZERO) > 0) {
+            Optional<BigDecimal> price = priceService.getCurrentPrice(asset.getCategory(), asset.getSymbol());
+            if (price.isPresent()) {
+                currentPrice = price.get();
+                evaluationAmount = currentPrice.multiply(buyQty);
+                profitAmount = evaluationAmount.subtract(buyAmount);
+                profitRate = buyAmount.compareTo(BigDecimal.ZERO) > 0
+                        ? profitAmount.divide(buyAmount, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
+                        : BigDecimal.ZERO;
+            }
+        }
+
         return new HoldingResponse(
                 asset.getId(), asset.getSymbol(), asset.getName(),
-                asset.getCategory().name(), asset.getCurrency(), buyQty, avgPrice
+                asset.getCategory().name(), asset.getCurrency(), buyQty, avgPrice,
+                currentPrice, evaluationAmount, profitAmount, profitRate
         );
     }
 
