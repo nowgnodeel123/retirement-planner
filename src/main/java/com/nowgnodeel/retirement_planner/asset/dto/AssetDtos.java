@@ -24,6 +24,7 @@ public class AssetDtos {
             @NotNull @PastOrPresent LocalDate tradeDate   // D-061: 미래 날짜 차단(엔티티에도 이중 방어 있음)
     ) {}
 
+    // AssetDtos.java — HoldingResponse record 수정
     public record HoldingResponse(
             Long assetId,
             String symbol,
@@ -32,9 +33,12 @@ public class AssetDtos {
             String currency,
             BigDecimal quantity,
             BigDecimal averagePrice,
-            BigDecimal currentPrice,       // null이면 시세 조회 실패 → 프론트 배너(D-058)
-            BigDecimal evaluationAmount,   // currentPrice * quantity, null 가능
-            BigDecimal profitAmount,       // evaluationAmount - 매수총액, null 가능
-            BigDecimal profitRate          // %, null 가능. D-049: 양수=빨강/음수=파랑은 프론트 처리
+            BigDecimal currentPrice,
+            BigDecimal evaluationAmount,
+            BigDecimal profitAmount,
+            BigDecimal profitRate,
+            BigDecimal exchangeRate,          // M5: 해외주식만 값 존재, 그 외 null
+            BigDecimal krwEvaluationAmount,   // M5: evaluationAmount(USD) * exchangeRate, 해외주식만
+            String exchangeRateBaseDate       // M5: "2026-07-17" 형태 — 환율 기준일 라벨용(D-058과 동일 패턴)
     ) {}
 }

@@ -1,6 +1,7 @@
 package com.nowgnodeel.retirement_planner.asset.price;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -12,9 +13,10 @@ import java.time.format.DateTimeFormatter;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class DomesticStockPriceProvider implements PriceProvider {
 
-    private final RestClient restClient = RestClient.create();
+    private final RestClient externalApiRestClient;
 
     @Value("${price-api.data-go-kr.key}")
     private String apiKey;
@@ -27,7 +29,7 @@ public class DomesticStockPriceProvider implements PriceProvider {
         for (int daysBack = 1; daysBack <= 10; daysBack++) {
             String basDt = LocalDate.now().minusDays(daysBack).format(DateTimeFormatter.BASIC_ISO_DATE);
 
-            JsonNode items = restClient.get()
+            JsonNode items = externalApiRestClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .scheme("https")
                             .host("apis.data.go.kr")

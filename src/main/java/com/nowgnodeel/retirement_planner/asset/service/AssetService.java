@@ -2,6 +2,8 @@
 package com.nowgnodeel.retirement_planner.asset.service;
 
 import com.nowgnodeel.retirement_planner.asset.entity.*;
+import com.nowgnodeel.retirement_planner.asset.fx.entity.ExchangeRate;
+import com.nowgnodeel.retirement_planner.asset.fx.service.ExchangeRateService;
 import com.nowgnodeel.retirement_planner.asset.price.PriceService;
 import com.nowgnodeel.retirement_planner.asset.repository.*;
 import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
@@ -24,7 +26,8 @@ public class AssetService {
     private final AssetRepository assetRepository;
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
-    private final PriceService priceService; // 필드 추가 (RequiredArgsConstructor라 생성자 자동 반영)
+    private final PriceService priceService;
+    private final ExchangeRateService exchangeRateService; // M5: 해외주식 원화환산(D-063)
 
     @Transactional
     public HoldingResponse buy(Long userId, BuyRequest request) {
@@ -68,7 +71,7 @@ public class AssetService {
                 .toList();
     }
 
-    // D-050: 파생값 계산 + M4: 현재가/평가금액/손익률 반영
+    // D-050: 파생값 계산 + M4: 현재가/평가금액/손익률 반영 + M5: 해외주식 원화환산(D-063)
     private HoldingResponse toHoldingResponse(Asset asset) {
         List<Transaction> txs = transactionRepository.findAllByAssetIdOrderByTradeDateAsc(asset.getId());
 
@@ -101,10 +104,25 @@ public class AssetService {
             }
         }
 
+        // M5: 해외주식만 원화 이중표시(D-063). 환율 캐시가 없으면 그냥 null로 남기고 정상 렌더(D-058과 동일한 degrade 원칙).
+        BigDecimal exchangeRate = null;
+        BigDecimal krwEvaluationAmount = null;
+        String exchangeRateBaseDate = null;
+
+        if (asset.getCategory() == AssetCategory.FOREIGN_STOCK && evaluationAmount != null) {
+            Optional<ExchangeRate> rate = exchangeRateService.getRate("USD");
+            if (rate.isPresent()) {
+                exchangeRate = rate.get().getDealBasR();
+                krwEvaluationAmount = evaluationAmount.multiply(exchangeRate);
+                exchangeRateBaseDate = rate.get().getBaseDate().toString();
+            }
+        }
+
         return new HoldingResponse(
                 asset.getId(), asset.getSymbol(), asset.getName(),
                 asset.getCategory().name(), asset.getCurrency(), buyQty, avgPrice,
-                currentPrice, evaluationAmount, profitAmount, profitRate
+                currentPrice, evaluationAmount, profitAmount, profitRate,
+                exchangeRate, krwEvaluationAmount, exchangeRateBaseDate
         );
     }
 

@@ -1,6 +1,7 @@
 package com.nowgnodeel.retirement_planner.asset.price;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -11,13 +12,14 @@ import java.math.BigDecimal;
  * 자산 통화는 KRW 원화마켓 기준(resolveCurrency)이라 마켓코드는 항상 KRW-{symbol}.
  */
 @Component
+@RequiredArgsConstructor
 public class CryptoPriceProvider implements PriceProvider {
 
-    private final RestClient restClient = RestClient.create();
+    private final RestClient externalApiRestClient;
 
     @Override
     public BigDecimal getCurrentPrice(String symbol) {
-        JsonNode body = restClient.get()
+        JsonNode body = externalApiRestClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .scheme("https")
                         .host("api.upbit.com")

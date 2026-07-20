@@ -57,3 +57,5 @@ price-api:
     key: ${DATA_GO_KR_API_KEY}
   finnhub:
     key: ${FINNHUB_API_KEY}
+  koreaexim:
+    key: ${KOREAEXIM_API_KEY}

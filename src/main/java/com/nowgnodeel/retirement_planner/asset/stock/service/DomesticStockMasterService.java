@@ -25,13 +25,10 @@ import java.time.format.DateTimeFormatter;
 public class DomesticStockMasterService {
 
     private final DomesticStockRepository domesticStockRepository;
-    private final RestClient restClient = RestClient.create();
+    private final RestClient externalApiRestClient;
 
     @Value("${price-api.data-go-kr.key}")
     private String apiKey;
-
-    private static final String KRX_LISTED_STOCK_ENDPOINT =
-            "https://apis.data.go.kr/1160100/service/GetKrxListedInfoService/getItemInfo";
 
     @Scheduled(cron = "0 0 3 * * MON")
     public void scheduledRefresh() {
@@ -44,7 +41,7 @@ public class DomesticStockMasterService {
         for (int daysBack = 1; daysBack <= 10; daysBack++) {
             String basDt = LocalDate.now().minusDays(daysBack).format(DateTimeFormatter.BASIC_ISO_DATE);
 
-            JsonNode items = restClient.get()
+            JsonNode items = externalApiRestClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .scheme("https")
                             .host("apis.data.go.kr")

@@ -1,6 +1,7 @@
 package com.nowgnodeel.retirement_planner.asset.price;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -8,16 +9,17 @@ import org.springframework.web.client.RestClient;
 import java.math.BigDecimal;
 
 @Component
+@RequiredArgsConstructor
 public class ForeignStockPriceProvider implements PriceProvider {
 
-    private final RestClient restClient = RestClient.create();
+    private final RestClient externalApiRestClient;
 
     @Value("${price-api.finnhub.key}")
     private String apiKey;
 
     @Override
     public BigDecimal getCurrentPrice(String symbol) {
-        JsonNode body = restClient.get()
+        JsonNode body = externalApiRestClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .scheme("https")
                         .host("finnhub.io")
