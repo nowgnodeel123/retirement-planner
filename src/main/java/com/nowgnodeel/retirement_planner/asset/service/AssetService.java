@@ -111,8 +111,7 @@ public class AssetService {
         Asset asset = assetRepository.findByIdAndAccount_User_Id(assetId, userId)
                 .orElseThrow(() -> new NotFoundException("자산을 찾을 수 없습니다."));
 
-        return transactionRepository.findAllByAssetIdOrderByTradeDateDesc(asset.getId()).stream()
-                .map(tx -> new TransactionResponse(
+        return transactionRepository.findAllByAssetIdOrderByTradeDateDescIdDesc(asset.getId()).stream()                .map(tx -> new TransactionResponse(
                         tx.getId(),
                         tx.getType().name(),
                         tx.getTradeDate(),
