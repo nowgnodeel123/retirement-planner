@@ -27,11 +27,29 @@ public class AssetController {
         return ResponseEntity.ok(assetService.buy(userId, request));
     }
 
+    // M6
+    @PostMapping("/sell")
+    public ResponseEntity<HoldingResponse> sell(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody SellRequest request
+    ) {
+        return ResponseEntity.ok(assetService.sell(userId, request));
+    }
+
     @GetMapping
     public ResponseEntity<List<HoldingResponse>> holdings(
             @AuthenticationPrincipal Long userId,
             @RequestParam Long accountId
     ) {
         return ResponseEntity.ok(assetService.findHoldingsByAccount(userId, accountId));
+    }
+
+    // M6: 계좌/자산별 거래내역(매수/매도) 조회
+    @GetMapping("/{assetId}/transactions")
+    public ResponseEntity<List<TransactionResponse>> transactions(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long assetId
+    ) {
+        return ResponseEntity.ok(assetService.findTransactionsByAsset(userId, assetId));
     }
 }
