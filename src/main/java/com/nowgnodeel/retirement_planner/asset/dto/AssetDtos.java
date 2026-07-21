@@ -16,15 +16,26 @@ public class AssetDtos {
             @NotNull Long accountId,
             @NotBlank String symbol,
             @NotBlank String name,
-            @NotNull AssetCategory category,   // DOMESTIC_STOCK, FOREIGN_STOCK, CRYPTO, FUND, CASH
+            @NotNull AssetCategory category,
             @NotNull @DecimalMin(value = "0.00000001") BigDecimal quantity,
             @NotNull @DecimalMin(value = "0") BigDecimal unitPrice,
-            String currency,     // FOREIGN_STOCK만 사용, 나머지는 서버가 KRW로 확정
-            BigDecimal fx,       // FOREIGN_STOCK만 필수(D-063), 그 외 null
-            @NotNull @PastOrPresent LocalDate tradeDate   // D-061: 미래 날짜 차단(엔티티에도 이중 방어 있음)
+            String currency,
+            BigDecimal fx,
+            @NotNull @PastOrPresent LocalDate tradeDate
     ) {}
 
-    // AssetDtos.java — HoldingResponse record 수정
+    /**
+     * M6: 매도 거래. 자산은 이미 존재하므로 accountId/symbol/name/category는 불필요 — assetId만 받는다.
+     * D-057(보유수량 초과 검증)은 요청 시점 계산이 필요해 서비스 레이어에서 처리, DTO 자체에는 없음.
+     */
+    public record SellRequest(
+            @NotNull Long assetId,
+            @NotNull @DecimalMin(value = "0.00000001") BigDecimal quantity,
+            @NotNull @DecimalMin(value = "0") BigDecimal unitPrice,
+            BigDecimal fx,       // FOREIGN_STOCK만 필수(D-063), 그 외 null — BuyRequest와 동일 규칙
+            @NotNull @PastOrPresent LocalDate tradeDate   // D-061
+    ) {}
+
     public record HoldingResponse(
             Long assetId,
             String symbol,
@@ -37,8 +48,22 @@ public class AssetDtos {
             BigDecimal evaluationAmount,
             BigDecimal profitAmount,
             BigDecimal profitRate,
-            BigDecimal exchangeRate,          // M5: 해외주식만 값 존재, 그 외 null
-            BigDecimal krwEvaluationAmount,   // M5: evaluationAmount(USD) * exchangeRate, 해외주식만
-            String exchangeRateBaseDate       // M5: "2026-07-17" 형태 — 환율 기준일 라벨용(D-058과 동일 패턴)
+            BigDecimal exchangeRate,
+            BigDecimal krwEvaluationAmount,
+            String exchangeRateBaseDate
+    ) {}
+
+    /**
+     * M6: 거래내역 조회 응답. amount = quantity * unitPrice(원 통화 기준 — 해외주식은 USD 그대로).
+     * 원화환산은 이 화면 스코프 밖(D-087: 이중표시는 평가금액/손익에만 적용, 거래내역은 원 통화 유지).
+     */
+    public record TransactionResponse(
+            Long transactionId,
+            String type,          // "BUY" | "SELL"
+            LocalDate tradeDate,
+            BigDecimal quantity,
+            BigDecimal unitPrice,
+            BigDecimal amount,
+            BigDecimal fx          // FOREIGN_STOCK만 값 존재, 그 외 null
     ) {}
 }
