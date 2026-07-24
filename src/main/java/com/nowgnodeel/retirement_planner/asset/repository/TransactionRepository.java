@@ -3,6 +3,7 @@ package com.nowgnodeel.retirement_planner.asset.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import com.nowgnodeel.retirement_planner.asset.entity.Transaction;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
@@ -15,4 +16,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     // id desc를 2차 정렬 기준으로 둬서 "같은 날짜 안에서는 나중에 입력한 게 위"가 되도록 보장한다.
     // (실동작 검증 중 발견: 오늘 매수→매도 했더니 매도가 아래로 가는 문제가 실제로 나타남)
     List<Transaction> findAllByAssetIdOrderByTradeDateDescIdDesc(Long assetId);
+
+    // M9: "이번 달 매매 요약" 인사이트 배너용 — 계좌 전체 범위, 날짜 구간 필터
+    List<Transaction> findAllByAsset_Account_User_IdAndTradeDateBetween(
+            Long userId, LocalDate start, LocalDate end);
 }

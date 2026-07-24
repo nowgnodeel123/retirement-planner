@@ -18,4 +18,7 @@ public interface AssetRepository extends JpaRepository<Asset, Long> {
     // M6: assetId만으로 접근하는 매도/거래내역 API용 — 계좌 소유자 검증까지 쿼리 한 번에 강제
     // (AccountRepository.findByIdAndUserId와 동일한 보안 원칙)
     Optional<Asset> findByIdAndAccount_User_Id(Long id, Long userId);
+
+    // M9: 대시보드 전체 자산 집계용 — 계좌 전체 범위로 확장(AccountRepository.findAllByUserId와 동일 성격)
+    List<Asset> findAllByAccount_UserId(Long userId);
 }

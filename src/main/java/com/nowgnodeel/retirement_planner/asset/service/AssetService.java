@@ -105,6 +105,16 @@ public class AssetService {
     }
 
     /**
+     * M9: 대시보드 총자산/도넛차트 집계용 — 사용자의 모든 계좌를 넘나드는 보유자산 조회.
+     * findAllByAccount_UserId 자체가 userId로 스코핑되므로 별도 소유자 검증 분기 불필요.
+     */
+    public List<HoldingResponse> findAllHoldingsByUser(Long userId) {
+        return assetRepository.findAllByAccount_UserId(userId).stream()
+                .map(this::toHoldingResponse)
+                .toList();
+    }
+
+    /**
      * M6: 자산별 거래내역(매수/매도) 조회. 최신순(desc) — 평단 계산용 asc 리포지토리 메서드와 별개.
      */
     public List<TransactionResponse> findTransactionsByAsset(Long userId, Long assetId) {

@@ -4,6 +4,7 @@ package com.nowgnodeel.retirement_planner.asset.dividend.repository;
 import com.nowgnodeel.retirement_planner.asset.dividend.entity.Dividend;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -16,4 +17,8 @@ public interface DividendRepository extends JpaRepository<Dividend, Long> {
     // 삭제 API용: dividendId + assetId(경로 리소스 일치) + 소유자(userId)를 쿼리 한 번으로 강제.
     // AssetRepository.findByIdAndAccount_User_Id와 동일한 보안 원칙(8.1 소유자 검증).
     Optional<Dividend> findByIdAndAssetIdAndAsset_Account_User_Id(Long id, Long assetId, Long userId);
+
+    // M9: "이번 달 배당 요약" 인사이트 배너용 — 계좌 전체 범위, 날짜 구간 필터
+    List<Dividend> findAllByAsset_Account_User_IdAndPayDateBetween(
+            Long userId, LocalDate start, LocalDate end);
 }
