@@ -152,32 +152,33 @@ public class AssetService {
         return buyQty.subtract(sellQty);
     }
 
-    // D-050: 파생값 계산 + M4: 현재가/평가금액/손익률 + M5: 해외주식 원화환산(D-063)
-    // M6 수정: quantity가 이제 BUY 누적만이 아니라 BUY-SELL 순보유량이다.
-    // (기존 버그 수정 — SELL 트랜잭션이 저장돼도 보유수량에 전혀 반영되지 않던 문제)
-    private HoldingResponse toHoldingResponse(Asset asset) {
+    /**
+     * MVP 단순화(신규 결정 아님 — D-050 파생값 원칙의 연장): 평균단가는 이동평균법으로
+     * 매도 시 재계산하지 않고, 전체 매수 내역 기준 평단을 그대로 유지한다.
+     * 정교한 이동평균/FIFO 평단 재계산이 필요해지면(세금 탭 실현손익 정확도, M11) 별도 검토.
+     * M10: asset/profit 서브패키지의 실현손익 계산이 동일 평단을 재사용해야 해서 public으로 공개.
+     */
+    public BigDecimal calculateAveragePrice(Asset asset) {
         List<Transaction> txs = transactionRepository.findAllByAssetIdOrderByTradeDateAsc(asset.getId());
-
         BigDecimal buyQty = BigDecimal.ZERO;
         BigDecimal buyAmount = BigDecimal.ZERO;
-        BigDecimal sellQty = BigDecimal.ZERO;
         for (Transaction tx : txs) {
             if (tx.getType() == TransactionType.BUY) {
                 buyQty = buyQty.add(tx.getQuantity());
                 buyAmount = buyAmount.add(tx.getQuantity().multiply(tx.getUnitPrice()));
-            } else {
-                sellQty = sellQty.add(tx.getQuantity());
             }
         }
-
-        // MVP 단순화(신규 결정 아님 — D-050 파생값 원칙의 연장): 평균단가는 이동평균법으로
-        // 매도 시 재계산하지 않고, 전체 매수 내역 기준 평단을 그대로 유지한다.
-        // 정교한 이동평균/FIFO 평단 재계산이 필요해지면(세금 탭 실현손익 정확도, M11) 별도 검토.
-        BigDecimal avgPrice = buyQty.compareTo(BigDecimal.ZERO) > 0
+        return buyQty.compareTo(BigDecimal.ZERO) > 0
                 ? buyAmount.divide(buyQty, 4, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
+    }
 
-        BigDecimal quantity = buyQty.subtract(sellQty);
+    // D-050: 파생값 계산 + M4: 현재가/평가금액/손익률 + M5: 해외주식 원화환산(D-063)
+    // M6 수정: quantity가 이제 BUY 누적만이 아니라 BUY-SELL 순보유량이다.
+    // (기존 버그 수정 — SELL 트랜잭션이 저장돼도 보유수량에 전혀 반영되지 않던 문제)
+    private HoldingResponse toHoldingResponse(Asset asset) {
+        BigDecimal quantity = calculateNetQuantity(asset);
+        BigDecimal avgPrice = calculateAveragePrice(asset);
         BigDecimal costBasis = avgPrice.multiply(quantity);
 
         BigDecimal currentPrice = null;
