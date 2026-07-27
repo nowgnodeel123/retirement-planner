@@ -118,17 +118,17 @@
 ## 🏗 시스템 아키텍처
 
 ```
-┌─────────────────┐         ┌──────────────────────────────┐
-│   Next.js         │  HTTPS  │   Spring Boot API              │
-│   (Vercel)         │────────▶│   /api/auth/**, /api/accounts   │
-│                    │         │   /api/assets/** (매수/매도/조회)│
-│                    │         │   /api/domestic-stocks/search   │
-│                    │         │   /api/v1/simulation/calculate  │
-└─────────────────┘         └──────────┬───────────────────┘
-                                        │
-                             ┌──────────▼───────────────┐
-                             │   PostgreSQL (Railway)      │
-                             │   Flyway로 스키마 버전 관리    │
+┌─────────────────┐         ┌─────────────────────────────────┐
+│   Next.js       │  HTTPS  │   Spring Boot API               │
+│   (Vercel)      │───────▶│   /api/auth/**, /api/accounts   │
+│                 │         │   /api/assets/** (매수/매도/조회)│
+│                 │         │   /api/domestic-stocks/search   │
+│                 │         │   /api/v1/simulation/calculate  │
+└─────────────────┘         └──────────┬──────────────────────┘
+                                       │
+                             ┌──────────▼────────────────┐
+                             │   PostgreSQL (Railway)    │
+                             │   Flyway로 스키마 버전 관리 │
                              └──────────┬────────────────┘
                                         │
                     ┌───────────────────┼────────────────────┐
