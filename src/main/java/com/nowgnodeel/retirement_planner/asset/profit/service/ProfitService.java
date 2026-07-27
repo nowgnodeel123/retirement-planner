@@ -20,9 +20,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static com.nowgnodeel.retirement_planner.asset.profit.dto.ProfitDtos.*;
 
@@ -47,21 +45,13 @@ public class ProfitService {
         List<Transaction> sells = fetchSells(accountId, category, range[0], range[1]);
         List<Dividend> dividends = fetchDividends(accountId, category, range[0], range[1]);
 
-        Map<Long, BigDecimal> avgPriceCache = new HashMap<>();
         List<ProfitItem> items = new ArrayList<>();
         BigDecimal realizedTotal = BigDecimal.ZERO;
 
         for (Transaction tx : sells) {
             Asset asset = tx.getAsset();
-            // D-050 원칙의 연장(신규 아님): 매도 시점 재계산 없이 전체 매수 내역 기준 평단을
-            // 그대로 실현손익 원가로 사용한다(AssetService.toHoldingResponse와 동일 근거, M11 재검토 전제).
-            BigDecimal avgPrice = avgPriceCache.computeIfAbsent(
-                    asset.getId(), id -> assetService.calculateAveragePrice(asset));
-
-            BigDecimal profit = tx.getUnitPrice().subtract(avgPrice).multiply(tx.getQuantity());
-            if (tx.getFx() != null) {
-                profit = profit.multiply(tx.getFx()); // D-104: 매도 시점 저장된 fx만 사용, 재조회 없음
-            }
+            // D-107: AssetService.calculateRealizedProfitKrw가 공식의 단일 출처(tax 패키지와 공유).
+            BigDecimal profit = assetService.calculateRealizedProfitKrw(tx);
             realizedTotal = realizedTotal.add(profit);
 
             items.add(new ProfitItem(

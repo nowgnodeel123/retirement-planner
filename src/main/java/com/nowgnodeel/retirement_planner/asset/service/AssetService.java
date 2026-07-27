@@ -173,6 +173,20 @@ public class AssetService {
                 : BigDecimal.ZERO;
     }
 
+    /**
+     * D-107 실현손익 공식의 단일 출처: 매도 1건당 (매도단가-평단)×매도수량, 해외주식은
+     * 매도 시점 저장된 fx로 환산(D-104, 재조회 없음). asset/profit(M10)과 tax(M11)가
+     * 이 메서드를 함께 재사용해 두 화면의 실현손익 수치가 갈라지지 않도록 한다(R-015).
+     */
+    public BigDecimal calculateRealizedProfitKrw(Transaction sellTx) {
+        BigDecimal avgPrice = calculateAveragePrice(sellTx.getAsset());
+        BigDecimal profit = sellTx.getUnitPrice().subtract(avgPrice).multiply(sellTx.getQuantity());
+        if (sellTx.getFx() != null) {
+            profit = profit.multiply(sellTx.getFx());
+        }
+        return profit;
+    }
+
     // D-050: 파생값 계산 + M4: 현재가/평가금액/손익률 + M5: 해외주식 원화환산(D-063)
     // M6 수정: quantity가 이제 BUY 누적만이 아니라 BUY-SELL 순보유량이다.
     // (기존 버그 수정 — SELL 트랜잭션이 저장돼도 보유수량에 전혀 반영되지 않던 문제)
