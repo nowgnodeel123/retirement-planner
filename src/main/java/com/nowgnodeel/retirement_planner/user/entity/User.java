@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -32,16 +33,34 @@ public class User {
 
     private String providerId;     // KAKAO 전용 (카카오 회원번호)
 
+    // 아래 4개는 이메일 회원가입(LOCAL) 전용 프로필 필드. 카카오 유저는 null(D-116 세션에서 추가)
+    @Column(length = 50)
+    private String name;
+
+    private LocalDate birthDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private Gender gender;
+
+    @Column(length = 20)
+    private String phone;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Builder
-    private User(String email, String password, String nickname, AuthProvider provider, String providerId) {
+    private User(String email, String password, String nickname, AuthProvider provider, String providerId,
+                 String name, LocalDate birthDate, Gender gender, String phone) {
         this.email = email;
         this.password = password;
         this.nickname = nickname;
         this.provider = provider;
         this.providerId = providerId;
+        this.name = name;
+        this.birthDate = birthDate;
+        this.gender = gender;
+        this.phone = phone;
     }
 
     @PrePersist
@@ -49,12 +68,17 @@ public class User {
         this.createdAt = LocalDateTime.now();
     }
 
-    public static User createLocal(String email, String encodedPassword, String nickname) {
+    public static User createLocal(String email, String encodedPassword, String nickname,
+                                    String name, LocalDate birthDate, Gender gender, String phone) {
         return User.builder()
                 .email(email)
                 .password(encodedPassword)
                 .nickname(nickname)
                 .provider(AuthProvider.LOCAL)
+                .name(name)
+                .birthDate(birthDate)
+                .gender(gender)
+                .phone(phone)
                 .build();
     }
 
