@@ -51,6 +51,9 @@ public class SimulationResponseDto {
         private double healthInsuranceRate;
         private long monthlyPensionTax;
         private long monthlyHealthInsurance;
+        // 은퇴 1년차 주식/ETF 인출분에 부과되는 양도소득세(22%, 연 250만원 공제) gross-up 차액.
+        // 은퇴나이가 55세 미만(퇴직연금 미개시)이면 첫 소득원이 사실상 이것뿐이라 노출이 중요하다.
+        private long monthlyStockTax;
         private long totalMonthlyTax;
         private boolean isPreciseHealthInsurance;
         private long healthInsuranceIncomePart;
