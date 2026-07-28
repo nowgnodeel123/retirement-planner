@@ -6,6 +6,7 @@ import com.nowgnodeel.retirement_planner.service.SimulationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -24,6 +25,7 @@ public class SimulationController {
 
     @PostMapping("/calculate")
     public ResponseEntity<SimulationResponseDto> calculate(
+            @AuthenticationPrincipal Long userId,
             @Valid @RequestBody SimulationRequestDto request) {
         return ResponseEntity.ok(simulationService.calculate(request));
     }

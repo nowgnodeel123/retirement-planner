@@ -41,8 +41,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // 기존 은퇴시뮬레이터 엔드포인트(/api/v1/simulation/**)는 로그인 연동 전(M13)까지 임시 허용
-                        .requestMatchers("/api/auth/**", "/oauth2/**", "/login/**", "/api/v1/simulation/**").permitAll()
+                        .requestMatchers("/api/auth/**", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth2 -> oauth2
