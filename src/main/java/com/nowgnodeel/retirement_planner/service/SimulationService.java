@@ -176,7 +176,8 @@ public class SimulationService {
             result.add(SimulationResponseDto.YearlyIncomePoint.builder()
                     .age(y.age())
                     .nationalAfterTax(y.nationalAfterTax())
-                    .midAfterTax(y.midAfterTax())
+                    .retirementPensionAfterTax(y.retirementPensionAfterTax())
+                    .privatePensionAfterTax(y.privatePensionAfterTax())
                     .liquidWithdrawalAfterTax(y.liquidAfterTax())
                     .targetExpense(y.targetExpense())
                     .build());
@@ -217,9 +218,16 @@ public class SimulationService {
             long liquidWithdrawalGross, long liquidWithdrawalAfterTax
     ) {}
 
-    /** 특정 나이 시점의 세후 월 소득 구성 한 점. 결과 화면 타임라인 차트용. */
+    /**
+     * 특정 나이 시점의 세후 월 소득 구성 한 점. 결과 화면 타임라인 차트용.
+     * WHY(퇴직연금/사적연금 분리, D-131): 퇴직연금(DB/DC)은 근속연수·급여만으로
+     * 자동 계산되고 IRP·연금저축은 사용자가 직접 납입액을 넣어야 하는 별개
+     * 상품인데, 예전에는 이 둘을 midAfterTax 하나로 합쳐서 내려보내 "IRP를
+     * 안 넣었는데 왜 연금이 나오냐"는 혼란을 일으켰다. 두 필드로 분리한다.
+     */
     private record YearlyIncome(
-            int age, long nationalAfterTax, long midAfterTax, long liquidAfterTax, long targetExpense
+            int age, long nationalAfterTax, long retirementPensionAfterTax,
+            long privatePensionAfterTax, long liquidAfterTax, long targetExpense
     ) {}
 
     private record RetirementProjection(
@@ -306,7 +314,8 @@ public class SimulationService {
             timeline.add(new YearlyIncome(
                     age,
                     age >= pensionReceiptAge ? Math.round(nationalAnnual / 12.0) : 0,
-                    age >= MID_UNLOCK_AGE ? Math.round(midAnnual / 12.0) : 0,
+                    age >= MID_UNLOCK_AGE ? retirementPensionAfterTax : 0,
+                    age >= MID_UNLOCK_AGE ? (irpAfterTax + psAfterTax) : 0,
                     monthlyLiquidAfterTax,
                     Math.round(targetAnnual / 12.0)
             ));

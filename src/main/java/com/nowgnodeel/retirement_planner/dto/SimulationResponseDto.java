@@ -103,7 +103,10 @@ public class SimulationResponseDto {
     public static class YearlyIncomePoint {
         private int age;
         private long nationalAfterTax;
-        private long midAfterTax;
+        // 퇴직연금(DB/DC) — 근속연수·급여만으로 자동 계산되며 IRP·연금저축과 무관
+        private long retirementPensionAfterTax;
+        // IRP + 연금저축 합산 — 사용자가 직접 납입액을 입력해야 반영됨
+        private long privatePensionAfterTax;
         private long liquidWithdrawalAfterTax;
         private long targetExpense; // 그 나이 시점 인플레 반영 목표 생활비 (참고선)
     }
