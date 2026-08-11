@@ -99,4 +99,9 @@ public class User {
     public void updateNickname(String nickname) {
         this.nickname = nickname;
     }
+
+    // 비밀번호 재설정(찾기)용. encodedPassword는 호출부(AuthService)에서 이미 인코딩된 값이어야 한다.
+    public void updatePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
 }

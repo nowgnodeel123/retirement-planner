@@ -28,4 +28,18 @@ public class AuthDtos {
     ) {}
 
     public record TokenResponse(String accessToken) {}
+
+    // 아이디(이메일) 찾기 — 휴대전화 인증(PhoneVerificationService)이 선행되어야 한다.
+    public record FindEmailRequest(
+            @NotBlank @Pattern(regexp = "^01[0-9]{8,9}$", message = "올바른 휴대전화번호 형식이 아닙니다") String phone
+    ) {}
+
+    public record FindEmailResponse(String maskedEmail) {}
+
+    // 비밀번호 재설정 — 이메일+휴대전화가 같은 계정에 속해야 하고, 휴대전화 인증이 선행되어야 한다.
+    public record ResetPasswordRequest(
+            @NotBlank @Email String email,
+            @NotBlank @Pattern(regexp = "^01[0-9]{8,9}$", message = "올바른 휴대전화번호 형식이 아닙니다") String phone,
+            @NotBlank @Size(min = 8, max = 64) String newPassword
+    ) {}
 }
