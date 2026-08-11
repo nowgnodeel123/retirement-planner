@@ -32,6 +32,15 @@ public class AccountController {
         return ResponseEntity.ok(accountService.findAllByUser(userId));
     }
 
+    @PatchMapping("/{accountId}/name")
+    public ResponseEntity<Response> rename(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long accountId,
+            @Valid @RequestBody RenameRequest request
+    ) {
+        return ResponseEntity.ok(accountService.rename(userId, accountId, request));
+    }
+
     @DeleteMapping("/{accountId}")
     public ResponseEntity<Void> delete(
             @AuthenticationPrincipal Long userId,

@@ -43,6 +43,11 @@ public class DashboardService {
         int excludedCount = 0;
         Map<String, BigDecimal> categoryTotals = new LinkedHashMap<>();
         Map<String, Integer> categoryCounts = new LinkedHashMap<>();
+        Map<Long, BigDecimal> accountTotals = new LinkedHashMap<>();
+        Map<Long, BigDecimal> accountProfits = new LinkedHashMap<>();
+        Map<String, BigDecimal> holdingTotals = new LinkedHashMap<>();
+        Map<String, String> holdingNames = new LinkedHashMap<>();
+        Map<String, String> holdingCategories = new LinkedHashMap<>();
 
         for (HoldingResponse h : holdings) {
             BigDecimal evalKrw;
@@ -70,11 +75,16 @@ public class DashboardService {
             profitKrw = profitKrw.add(profit);
             categoryTotals.merge(h.category(), evalKrw, BigDecimal::add);
             categoryCounts.merge(h.category(), 1, Integer::sum);
+            accountTotals.merge(h.accountId(), evalKrw, BigDecimal::add);
+            accountProfits.merge(h.accountId(), profit, BigDecimal::add);
+            holdingTotals.merge(h.symbol(), evalKrw, BigDecimal::add);
+            holdingNames.putIfAbsent(h.symbol(), h.name());
+            holdingCategories.putIfAbsent(h.symbol(), h.category());
         }
 
         // 계좌 상세 화면과 동일한 규칙: 포함된 자산이 하나도 없으면(전부 제외) totalKrw를 null로 반환
         if (totalKrw.compareTo(BigDecimal.ZERO) == 0 && excludedCount > 0) {
-            return new PortfolioSummaryResponse(null, BigDecimal.ZERO, BigDecimal.ZERO, excludedCount, List.of());
+            return new PortfolioSummaryResponse(null, BigDecimal.ZERO, BigDecimal.ZERO, excludedCount, List.of(), List.of(), List.of());
         }
 
         BigDecimal cost = totalKrw.subtract(profitKrw);
@@ -87,7 +97,28 @@ public class DashboardService {
                 .sorted((a, b) -> b.totalKrw().compareTo(a.totalKrw()))
                 .toList();
 
-        return new PortfolioSummaryResponse(totalKrw, profitKrw, profitRate, excludedCount, categories);
+        List<AccountSummary> accounts = accountTotals.entrySet().stream()
+                .map(e -> {
+                    BigDecimal accTotal = e.getValue();
+                    BigDecimal accProfit = accountProfits.get(e.getKey());
+                    BigDecimal accCost = accTotal.subtract(accProfit);
+                    BigDecimal accRate = accCost.compareTo(BigDecimal.ZERO) > 0
+                            ? accProfit.divide(accCost, 4, java.math.RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
+                            : BigDecimal.ZERO;
+                    return new AccountSummary(e.getKey(), accTotal, accProfit, accRate);
+                })
+                .toList();
+
+        List<HoldingSummary> holdingSummaries = holdingTotals.entrySet().stream()
+                .map(e -> new HoldingSummary(
+                        e.getKey(),
+                        holdingNames.get(e.getKey()),
+                        holdingCategories.get(e.getKey()),
+                        e.getValue()))
+                .sorted((a, b) -> b.totalKrw().compareTo(a.totalKrw()))
+                .toList();
+
+        return new PortfolioSummaryResponse(totalKrw, profitKrw, profitRate, excludedCount, categories, accounts, holdingSummaries);
     }
 
     /**

@@ -34,6 +34,10 @@ public class AssetService {
         Account account = accountRepository.findByIdAndUserId(request.accountId(), userId)
                 .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
 
+        if (!isCategoryAllowedForInstitution(account.getInstitutionType(), request.category())) {
+            throw new IllegalArgumentException("해당 계좌 유형에서는 등록할 수 없는 자산 카테고리입니다.");
+        }
+
         if (request.category() == AssetCategory.FOREIGN_STOCK && request.fx() == null) {
             throw new IllegalArgumentException("해외주식은 환율(fx) 값이 필요합니다.");
         }
@@ -226,11 +230,22 @@ public class AssetService {
         }
 
         return new HoldingResponse(
-                asset.getId(), asset.getSymbol(), asset.getName(),
+                asset.getId(), asset.getAccount().getId(), asset.getSymbol(), asset.getName(),
                 asset.getCategory().name(), asset.getCurrency(), quantity, avgPrice,
                 currentPrice, evaluationAmount, profitAmount, profitRate,
                 exchangeRate, krwEvaluationAmount, exchangeRateBaseDate
         );
+    }
+
+    // 프론트 assets/new/page.tsx의 allowedCategories()와 동일한 매핑 — 백엔드에도
+    // 강제해 malformed 요청으로 계좌 유형과 안 맞는 카테고리(예: 증권사 계좌에 CRYPTO)가
+    // 저장되는 걸 막는다.
+    private boolean isCategoryAllowedForInstitution(InstitutionType institutionType, AssetCategory category) {
+        return switch (institutionType) {
+            case SECURITIES -> category == AssetCategory.DOMESTIC_STOCK || category == AssetCategory.FOREIGN_STOCK;
+            case EXCHANGE -> category == AssetCategory.CRYPTO;
+            case BANK -> false;
+        };
     }
 
     private String resolveCurrency(BuyRequest request) {

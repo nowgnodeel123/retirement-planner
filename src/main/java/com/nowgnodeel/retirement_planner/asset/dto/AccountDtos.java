@@ -16,6 +16,10 @@ public class AccountDtos {
             AccountDetailType detailType   // EXCHANGE면 무시되고 엔티티가 NORMAL로 강제(Account.java 참고), null 허용
     ) {}
 
+    public record RenameRequest(
+            @NotBlank String name
+    ) {}
+
     public record Response(
             Long id,
             String name,

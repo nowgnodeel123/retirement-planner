@@ -15,13 +15,34 @@ public class DashboardDtos {
             BigDecimal profitKrw,
             BigDecimal profitRate,
             int excludedCount,       // 시세 미조회로 제외된 자산 수
-            List<CategorySummary> categories
+            List<CategorySummary> categories,
+            List<AccountSummary> accounts,
+            List<HoldingSummary> holdings
     ) {}
 
     public record CategorySummary(
             String category,
             BigDecimal totalKrw,
             int assetCount
+    ) {}
+
+    // 메인 대시보드 파이차트를 카테고리가 아니라 종목별로 보여주기 위한 집계.
+    // 같은 종목(symbol)이 여러 계좌에 나뉘어 있어도 하나로 합친다 — "삼성전자 20%"처럼
+    // 보여야지 계좌별로 쪼개서 보여줄 이유가 없다.
+    public record HoldingSummary(
+            String symbol,
+            String name,
+            String category,
+            BigDecimal totalKrw
+    ) {}
+
+    // 메인 계좌 목록에 계좌별 평가금액/손익을 함께 보여주기 위한 집계.
+    // getSummary()가 이미 전체 보유자산을 훑고 있어 같은 루프에서 계좌별로도 합산한다.
+    public record AccountSummary(
+            Long accountId,
+            BigDecimal totalKrw,
+            BigDecimal profitKrw,
+            BigDecimal profitRate
     ) {}
 
     /**

@@ -38,6 +38,7 @@ public class AssetDtos {
 
     public record HoldingResponse(
             Long assetId,
+            Long accountId,
             String symbol,
             String name,
             String category,

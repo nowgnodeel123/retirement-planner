@@ -40,6 +40,14 @@ public class AccountService {
     }
 
     @Transactional
+    public Response rename(Long userId, Long accountId, RenameRequest request) {
+        Account account = accountRepository.findByIdAndUserId(accountId, userId)
+                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
+        account.rename(request.name());
+        return Response.from(account);
+    }
+
+    @Transactional
     public void delete(Long userId, Long accountId) {
         Account account = accountRepository.findByIdAndUserId(accountId, userId)
                 .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
