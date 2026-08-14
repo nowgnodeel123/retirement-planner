@@ -51,11 +51,19 @@ public class DomesticStockPriceProvider implements PriceProvider {
 
             for (JsonNode item : items) {
                 String respCode = item.path("srtnCd").asText();
-                if (queryCode.equals(respCode) || symbolCode.equals(respCode)) {
-                    return new BigDecimal(item.get("clpr").asText());
+                if (!queryCode.equals(respCode) && !symbolCode.equals(respCode)) {
+                    continue;
                 }
+                // clpr(종가)이 거래정지 등으로 빈 값일 수 있음 — get()은 필드 부재 시 null을 반환해
+                // asText() 호출 시 NPE로 이어지고, 이 예외가 상위 PriceService에서 통째로 흡수되면서
+                // "간헐적 null" 증상으로만 보이던 원인이었음. path()로 안전하게 읽고 빈 값이면 이전 영업일로 폴백.
+                String clpr = item.path("clpr").asText();
+                if (!clpr.isBlank()) {
+                    return new BigDecimal(clpr);
+                }
+                log.info("basDt={} symbol={} 종가(clpr) 값 없음(거래정지 추정), 이전 영업일 재탐색", basDt, symbolCode);
             }
-            log.info("basDt={} symbol={}(query={}) 정확히 일치하는 종목 없음", basDt, symbolCode, queryCode);
+            log.info("basDt={} symbol={}(query={}) 유효한 시세 없음", basDt, symbolCode, queryCode);
         }
         throw new IllegalStateException("국내주식 시세 조회 실패(최근 10일 내 데이터 없음): " + symbolCode);
     }

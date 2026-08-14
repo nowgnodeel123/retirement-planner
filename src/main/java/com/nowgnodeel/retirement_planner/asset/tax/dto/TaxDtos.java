@@ -36,13 +36,17 @@ public class TaxDtos {
      * D-068: 실제 종합소득세액은 계산하지 않고, 금융소득 2천만원 기준 분리과세 종결 여부만 판정한다.
      * interestIncomeNotTracked: 이 앱은 예적금 이자(D-060)를 추적하지 않아 실제 금융소득이
      * totalDividendKrw보다 클 수 있다는 캐비트 — 프론트에 상시 노출 필요.
+     * R-016 보완: totalDividendKrw는 국내주식 배당(저장값=세후 순액)을 원천징수율 15.4%로
+     * 세전 역환산한 뒤 해외주식(저장값=세전 USD→원화 환산)과 합산한 값이다. 실제 세전 금액과
+     * 다를 수 있는 추정치이므로 dividendGrossedUp을 프론트에서 함께 안내한다.
      */
     public record DividendIncomeJudgement(
-            BigDecimal totalDividendKrw,    // 연간 배당 합(국내+해외, 저장값 그대로 — 세전 환산 없음)
+            BigDecimal totalDividendKrw,    // 연간 배당 합 추정(세전 환산치, 국내는 15.4% 역환산 적용)
             BigDecimal thresholdKrw,        // 2000만원 고정
             boolean exceedsThreshold,
             DividendTaxJudgement judgement,
             boolean interestIncomeNotTracked, // 항상 true — 이자소득 미추적 캐비트
+            boolean dividendGrossedUp,        // 항상 true — 국내주식 배당 세전 역환산 적용 캐비트(R-016)
             int dividendCount
     ) {}
 }

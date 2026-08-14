@@ -34,6 +34,9 @@ public class TaxService {
     private static final BigDecimal BASIC_DEDUCTION = new BigDecimal("2500000");
     private static final BigDecimal CAPITAL_GAINS_TAX_RATE = new BigDecimal("0.22"); // 지방소득세 포함
     private static final BigDecimal DIVIDEND_INCOME_THRESHOLD = new BigDecimal("20000000");
+    // R-016 대응: 국내주식 배당소득세 원천징수율(소득세 14%+지방소득세 1.4%). Dividend.amount는
+    // 국내주식=세후 순액(D-067)으로 저장되므로, 2천만원 기준 판정 전 세전 금액으로 역환산해야 한다.
+    private static final BigDecimal DOMESTIC_DIVIDEND_WITHHOLDING_RATE = new BigDecimal("0.154");
 
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
@@ -78,12 +81,16 @@ public class TaxService {
     }
 
     // D-068: 실제 세액 미계산, 분리과세 종결 vs 종합소득 신고 가능성 판정만.
+    // R-016: 국내주식 배당(세후 순액)을 세전으로 역환산한 뒤 합산해야 2천만원 기준과 같은 기준(세전)으로 비교된다.
     private DividendIncomeJudgement calculateDividendIncome(Long accountId, LocalDate start, LocalDate end) {
         List<Dividend> dividends = dividendRepository.findAllByAsset_AccountIdAndPayDateBetween(accountId, start, end);
 
         BigDecimal totalDividend = BigDecimal.ZERO;
         for (Dividend d : dividends) {
             BigDecimal amount = d.getFx() != null ? d.getAmount().multiply(d.getFx()) : d.getAmount();
+            if (d.getAsset().getCategory() == AssetCategory.DOMESTIC_STOCK) {
+                amount = amount.divide(BigDecimal.ONE.subtract(DOMESTIC_DIVIDEND_WITHHOLDING_RATE), 0, RoundingMode.HALF_UP);
+            }
             totalDividend = totalDividend.add(amount);
         }
 
@@ -93,6 +100,6 @@ public class TaxService {
                 : DividendTaxJudgement.SEPARATE_TAXATION_FINAL;
 
         return new DividendIncomeJudgement(
-                totalDividend, DIVIDEND_INCOME_THRESHOLD, exceeds, judgement, true, dividends.size());
+                totalDividend, DIVIDEND_INCOME_THRESHOLD, exceeds, judgement, true, true, dividends.size());
     }
 }
