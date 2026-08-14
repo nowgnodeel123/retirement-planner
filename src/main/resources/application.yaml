@@ -59,3 +59,14 @@ price-api:
     key: ${FINNHUB_API_KEY}
   koreaexim:
     key: ${KOREAEXIM_API_KEY}
+
+opendart:
+  api-key: ${OPENDART_API_KEY:}
+
+sms:
+  sens:
+    enabled: ${SENS_ENABLED:false}
+    access-key: ${SENS_ACCESS_KEY:}
+    secret-key: ${SENS_SECRET_KEY:}
+    service-id: ${SENS_SERVICE_ID:}
+    sender-phone: ${SENS_SENDER_PHONE:}

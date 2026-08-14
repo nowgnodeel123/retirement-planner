@@ -22,4 +22,16 @@ public class RestClientConfig {
         factory.setReadTimeout(Duration.ofSeconds(4));
         return RestClient.builder().requestFactory(factory).build();
     }
+
+    /**
+     * OpenDART corpCode.xml(ZIP, 전체 상장사 목록) 같은 대용량 일회성 다운로드 전용.
+     * 개별 요청을 짧게 끊는 externalApiRestClient와 달리 스케줄 배치 성격이라 여유를 둔다.
+     */
+    @Bean
+    public RestClient bulkDownloadRestClient() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(5));
+        factory.setReadTimeout(Duration.ofSeconds(30));
+        return RestClient.builder().requestFactory(factory).build();
+    }
 }
