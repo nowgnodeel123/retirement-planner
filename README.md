@@ -40,22 +40,26 @@
 | 기능 | 설명 |
 |------|------|
 | 카카오 소셜 로그인 | Spring Security OAuth2 Client 기반, 닉네임/이메일 동의항목 연동 |
-| 이메일 회원가입/로그인 | BCrypt 암호화, 이메일 중복 검증 |
+| 이메일 회원가입/로그인 | BCrypt 암호화, 이메일+휴대전화번호 중복 검증(부분 유니크 인덱스, D-135) |
+| 회원가입 프로필 필드 | 이메일/비밀번호/이름/생년월일/성별/휴대전화(인증) — MVP 스코프보다 넓은 개인정보 수집(D-121, ★핵심) |
+| 휴대전화 인증 | 발송/확인 API. 실제 SMS 벤더 미연동 상태의 개발용 목업(인증번호가 응답에 노출) — 프로덕션 노출 전 벤더 연동 필수(R-017) |
+| 아이디 찾기 / 비밀번호 재설정 | 휴대전화 OTP 인증 후 마스킹된 이메일 조회, 이메일+휴대전화 일치 확인 후 재설정(D-133) |
 | JWT 인증 | 액세스 토큰 7일 단일 발급 (리프레시 토큰 미도입 — MVP 단순화, D-081) |
 
 ### 포트폴리오 — 계좌·자산·매매·배당
 | 기능 | 설명 |
 |------|------|
-| 계좌 관리 | 은행/증권사/거래소, 상세유형(일반/ISA/IRP/연금저축) |
+| 계좌 관리 | 은행/증권사/거래소, 상세유형(일반/ISA/IRP/연금저축), 이름 수정(PATCH) |
 | 거래기록 기반 자산 | 국내·해외주식/암호화폐는 수량·평단·손익을 직접 저장하지 않고, 매매 히스토리(`transactions`)에서 조회 시점에 파생 계산 (D-050, ★핵심) |
-| 매수/매도 등록 | 종목 검색 → 최초 매수로 자산 생성(D-053), 보유 수량 초과 매도 차단(D-057) |
+| 매수/매도 등록 | 종목 검색 → 최초 매수로 자산 생성(D-053), 보유 수량 초과 매도 차단(D-057), 기존 보유 자산에 재고 추가 매수 지원 |
+| 카테고리-기관유형 무결성 검증 | 매수 시 계좌 기관유형에 허용된 자산 카테고리인지 서버에서 강제(D-135, ★핵심) — 프론트 필터만으로는 malformed 요청을 막지 못해 증권사 계좌에 암호화폐가 저장되던 버그를 발견해 수정 |
 | 매매 히스토리 조회 | 자산별 거래내역(매수/매도) 최신순 목록 |
 | 배당 추적 | 국내·해외주식 전용(서비스 레벨 강제), 해외주식은 USD+환율 필수 기록, 매매와 통합 히스토리로 표시 |
 
 ### 포트폴리오 대시보드 / 수익 / 세금
 | 기능 | 설명 |
 |------|------|
-| 대시보드 | 총자산·손익 통합, 카테고리별 집계(도넛), 이번 달 매매+배당 인사이트 |
+| 대시보드 | 총자산·손익 통합, **종목별 비중 집계**(도넛, D-136 — 계좌를 넘나들며 심볼로 합산), 계좌별 평가금액·손익률, 이번 달 매매+배당 인사이트 |
 | 수익 탭 | 계좌 스코프 기간(일/주/월/년/전체)×카테고리 필터 실현손익+배당 조회 |
 | 세금 탭 | 해외주식 양도소득세 추정치(기본공제 250만원·22%), 배당소득세 분리과세/종합신고 판정 — 국내주식 양도세는 조회하지 않음(D-064), 항상 "세무 전문가 검증 필요" 노출 |
 
@@ -65,8 +69,9 @@
 | 국내주식 시세 | data.go.kr, 전일 종가(D+1) 기준 — 실시간 아님 |
 | 국내주식 종목검색 | KRX 상장종목 로컬 캐시(`domestic_stocks`) + 이름 검색, 주간 자동 갱신 + 관리자 수동 트리거 |
 | 해외주식 시세 | Finnhub |
+| 해외주식 종목검색 | Finnhub 심볼 검색(`/api/v1/search`) 프록시, 로컬 캐시 없음(D-139) — 국내주식과 달리 API 자체가 검색을 지원해 캐싱 불필요 |
 | 코인 시세 | Upbit 공개 REST 티커 (키 불요) |
-| 환율(USD/KRW) | 한국수출입은행 오픈API, 매매기준율 캐시 + 영업일 11:30(KST) 자동 갱신 + 관리자 수동 트리거 |
+| 환율(USD/KRW) | 한국수출입은행 오픈API, 매매기준율 캐시 + 영업일 11:30(KST) 자동 갱신 + 관리자 수동 트리거. 일반 인증 사용자용 조회 엔드포인트 별도 제공 |
 | 원화 이중표시 | 해외주식 평가금액·손익만 원화 환산 병기(손익률 자체는 USD 기준 유지, D-087) |
 | 조회 실패 시 처리 | 시세·환율 API 실패해도 화면은 정상 렌더, 조용히 degrade(D-058), 계산·추정·보간하지 않음 |
 
@@ -102,13 +107,15 @@
 
 ## 🗳 이직 포트폴리오 열람자를 위한 주요 설계 결정
 
-전체 이력은 워크스페이스 `STATE.md`의 Decision Log(D-001~D-114)에 남아있습니다. 그중 되돌리기 비용이 높거나 이후 결정의 전제가 된 ★핵심 항목만 요약합니다.
+전체 이력은 워크스페이스 `STATE.md`의 Decision Log(D-001~D-141)에 남아있습니다. 그중 되돌리기 비용이 높거나 이후 결정의 전제가 된 ★핵심 항목만 요약합니다.
 
 - **D-050 — 매매 히스토리 기반 파생값 아키텍처.** 자산의 수량·평단·손익률을 별도 컬럼에 저장하지 않고 `transactions` 테이블에서 조회 시점에 계산합니다. 실제 자산관리 앱의 표준 구조이며, 이후 M6(매매 히스토리)·M10(수익 탭)·M11(세금 탭)이 모두 이 위에서 만들어졌습니다.
 - **D-079 — 개발 착수 순서를 로그인/인증(M1)으로 재배치.** `user_id` 기준으로 테이블을 설계한 뒤 나머지 기능을 얹는 순서로 바꿔, 나중에 소유자 검증을 소급 추가하는 재작업을 방지했습니다. 세션 상한도 마일스톤 수(13개)에 1:1로 맞춰 재산정했습니다.
 - **D-107 — 실현손익 계산식 확정.** 수익 탭의 실현손익은 기존 평단(FIFO/이동평균이 아닌 MVP 단순화, D-050) 기준으로 `(매도단가−평단)×매도수량`을 사용하기로 확정했습니다. 정교한 재계산은 의도적으로 보류된 스코프입니다.
 - **D-109 — 세금 탭 실현손익을 수익 탭과 동일 공식으로 단일화.** 세금 탭 착수 전 "수익 탭과 같은 방식으로 갈지, 별도(이동평균/FIFO)로 갈지"를 사용자에게 직접 확인해 재사용으로 확정했고, `AssetService.calculateRealizedProfitKrw()`를 단일 출처로 추출해 두 화면(`asset/profit`, `asset/tax`)이 물리적으로 같은 코드를 실행하도록 리팩터링했습니다. 두 화면이 각자 계산하다 수치가 어긋나는 문제를 근본적으로 차단합니다.
 - **D-114 — 은퇴 시뮬레이터 로그인 연동 범위를 "접근 가드"로 한정(M13).** 시뮬레이터는 계산 자체가 여전히 완전 무상태이며, 로그인은 화면·API 접근을 막는 용도로만 사용합니다. 계산 결과를 user에 귀속해 저장하는 기능(이력 조회 등)은 이번 스코프에 포함하지 않았습니다 — 향후 필요성이 생기면 별도 마일스톤으로 재검토합니다.
+- **D-135 — 프론트 필터만으로는 데이터 무결성을 보장할 수 없다는 걸 실제 오염 데이터로 확인.** 증권사 계좌에 허용되지 않는 암호화폐 자산이 저장돼 있는 걸 로컬 DB에서 발견했습니다. 원인은 카테고리 제한(D-037)이 프론트 UI 단에만 있고 서버에는 없었던 것 — `AssetService.buy()`에 서버사이드 검증을 추가해 malformed 요청으로도 무결성이 깨지지 않도록 막았습니다.
+- **D-140 — "API가 있다"와 "지금 쓸 수 있다"는 다르다는 걸 확인 후 배당 ex-date 자동조회를 보류.** data.go.kr에 배당 정보 API 자체는 실존했지만, 조회 키가 이 프로젝트가 저장해둔 종목코드가 아니라 법인등록번호/회사명뿐이었습니다. 회사명 문자열 매칭으로 우회하면 잘못된 종목의 배당 정보를 연결할 위험이 있어, 안전한 매핑 소스를 확보하기 전까지는 구현하지 않기로 했습니다 — "확정 가능한 데이터만 보여준다"는 원칙(D-058)을 새 기능에도 그대로 적용한 사례입니다.
 
 <br>
 
@@ -169,26 +176,26 @@ CORS는 로컬(`localhost:3000`)과 배포된 프론트 도메인만 허용하�
 
 ```
 src/main/java/com/nowgnodeel/retirement_planner/
-├── user/                  # User, AuthProvider + 마이페이지(닉네임 수정)
+├── user/                  # User(name/birthDate/gender/phone 포함), Gender enum, AuthProvider + 마이페이지(닉네임 수정)
 ├── auth/
-│   ├── controller/        # AuthController (이메일 회원가입/로그인)
-│   ├── service/           # AuthService
-│   ├── dto/                # AuthDtos
+│   ├── controller/        # AuthController(회원가입/로그인/아이디찾기/비번재설정), PhoneVerificationController(인증 발송/확인)
+│   ├── service/           # AuthService, PhoneVerificationService(메모리 기반 목업, R-017)
+│   ├── dto/                # AuthDtos, PhoneDtos
 │   └── oauth/              # 카카오 OAuth2 흐름 전용
 ├── asset/
 │   ├── entity/             # Account, Asset, Transaction, Deposit + enum
-│   ├── repository/ · service/ · controller/ · dto/   # AccountService, AssetService(매수/매도/보유조회/거래내역)
+│   ├── repository/ · service/ · controller/ · dto/   # AccountService(생성/삭제/이름수정), AssetService(매수/매도/보유조회/거래내역/카테고리-기관유형 검증)
 │   ├── dividend/           # 배당 등록/조회/삭제 (M8) — 국내·해외주식 전용, 해외는 fx 필수
-│   ├── dashboard/          # 포트폴리오 전체 집계: summary/insights (M9, entity 없음)
+│   ├── dashboard/          # 포트폴리오 전체 집계: summary/insights, 계좌별·종목별 집계 (M9, D-136, entity 없음)
 │   ├── profit/             # 계좌 스코프 실현손익+배당 조회 (M10, entity 없음)
 │   ├── tax/                # 양도소득세 추정 + 배당소득세 판정 (M11, entity 없음)
 │   ├── price/              # PriceProvider 구현체 3종 + PriceService (시세 조회 디스패치, M4)
-│   ├── stock/               # 국내주식 종목마스터 캐시 + 검색
-│   └── fx/                  # 환율(한국수출입은행) 연동 (M5)
+│   ├── stock/               # 국내주식 종목마스터 캐시+검색, 해외주식 Finnhub 심볼 검색(D-139)
+│   └── fx/                  # 환율(한국수출입은행) 연동 (M5) + 일반 사용자용 조회 엔드포인트
 ├── common/
 │   ├── config/             # SecurityConfig, RestClientConfig
 │   ├── security/            # JwtTokenProvider, JwtAuthenticationFilter
-│   └── exception/           # 공통/인증 예외 + 핸들러
+│   └── exception/           # 공통/인증 예외 + 핸들러 (PhoneNotVerifiedException, DuplicatePhoneException 등)
 ├── controller/
 │   ├── SimulationController.java     # 은퇴 시뮬레이터 API 엔드포인트 (M13: 인증 필수)
 │   └── GlobalExceptionHandler.java   # 검증 에러를 필드 단위로 상세화
@@ -205,7 +212,9 @@ src/main/resources/
     ├── V1__create_users_table.sql
     ├── V2__create_portfolio_tables.sql
     ├── V3__create_domestic_stocks_table.sql
-    └── V4__create_exchange_rates_table.sql
+    ├── V4__create_exchange_rates_table.sql
+    ├── V5__add_signup_profile_fields_to_users.sql   # name/birth_date/gender/phone (D-121)
+    └── V6__add_unique_index_on_users_phone.sql      # phone 부분 유니크 인덱스 (D-135)
 ```
 
 > 은퇴 시뮬레이터(`controller`/`service`/`dto` 최상위 패키지)는 레거시 구조로 남아있습니다. 향후 `retirement` 기능 패키지로 재편 예정(백로그) — 지금 리팩터링하지 않기로 확정된 항목입니다.
@@ -265,9 +274,13 @@ IntelliJ 사용 시 Run/Debug Configurations → Environment variables에 필수
 ### 인증
 
 ```
-POST /api/auth/signup     이메일 회원가입 → { accessToken }
-POST /api/auth/login      이메일 로그인   → { accessToken }
-GET  /oauth2/authorization/kakao   카카오 로그인 시작 (브라우저 리다이렉트)
+POST /api/auth/signup             이메일 회원가입(8필드, D-121) → { accessToken } — 휴대전화 인증 미완료 시 400
+POST /api/auth/login              이메일 로그인   → { accessToken }
+POST /api/auth/find-email         휴대전화 OTP 인증 후 마스킹된 이메일 조회 (D-133)
+POST /api/auth/reset-password     이메일+휴대전화 일치 확인 후 비밀번호 재설정 (D-133)
+POST /api/auth/phone/send-code    휴대전화 인증번호 발송 — 목업, 응답에 인증번호 그대로 노출(R-017)
+POST /api/auth/phone/verify-code  휴대전화 인증번호 확인
+GET  /oauth2/authorization/kakao  카카오 로그인 시작 (브라우저 리다이렉트)
 ```
 
 로그인 성공 시 JWT는 `Authorization: Bearer {accessToken}` 헤더로 이후 요청에 실어 보냅니다. 카카오 로그인은 성공 시 프론트 콜백 URL(`?accessToken=...`)로 리다이렉트됩니다. 그 외 모든 엔드포인트는 인증이 필요합니다.
@@ -277,10 +290,11 @@ GET  /oauth2/authorization/kakao   카카오 로그인 시작 (브라우저 리�
 ```
 GET    /api/accounts                       내 계좌 목록
 POST   /api/accounts                       계좌 생성
+PATCH  /api/accounts/{id}/name             계좌 이름 수정
 DELETE /api/accounts/{id}                  계좌 삭제
 
 GET    /api/assets?accountId={id}          계좌별 보유자산(파생값 계산 + 시세/환율 반영)
-POST   /api/assets/buy                     매수 등록 (신규 종목이면 자산 생성까지 겸함, D-053)
+POST   /api/assets/buy                     매수 등록 (신규 종목이면 자산 생성까지 겸함, D-053) — 계좌 기관유형-카테고리 검증(D-135)
 POST   /api/assets/sell                    매도 등록 (보유수량 초과 시 400, D-057)
 GET    /api/assets/{assetId}/transactions  자산별 매매 히스토리 (최신순)
 ```
@@ -310,6 +324,8 @@ GET /api/accounts/{accountId}/tax?year=    양도소득세 추정(해외주식�
 
 ```
 GET  /api/domestic-stocks/search?keyword={q}         국내주식 종목검색(로컬 캐시, 상위 20건)
+GET  /api/foreign-stocks/search?keyword={q}           해외주식 종목검색(Finnhub 프록시, 상위 20건, D-139)
+GET  /api/exchange-rates/{currency}                    최근 매매기준율 조회(일반 사용자용, 읽기 전용)
 POST /api/admin/domestic-stocks/refresh               국내주식 종목마스터 수동 갱신
 POST /api/admin/exchange-rates/refresh                환율 수동 갱신
 ```
@@ -462,6 +478,14 @@ MVP 개발 페이즈 M1~M13이 모두 완료되었습니다.
 - [x] **M11** — 세금 탭 (양도소득세 추정 + 배당소득세 판정)
 - [x] **M12** — 로그인 프론트 연동 (DevTokenGate 제거, 카카오+이메일 실제 로그인)
 - [x] **M13** — 은퇴시뮬레이터 로그인 연동(접근 가드) + README 최종화
+
+M13 이후 마일스톤 외 추가 개선(백로그 소진, QA 페이즈 착수 전):
+- [x] 회원가입 필드 확장(이름/생년월일/성별/휴대전화 인증) + 아이디 찾기/비밀번호 재설정
+- [x] 매수/매도 카테고리-기관유형 서버 무결성 검증, 계좌 이름 수정
+- [x] 대시보드 종목별 비중 재설계, 계좌별/종목별 집계
+- [x] 해외주식 종목 자동완성(Finnhub 심볼 검색)
+- [ ] 배당 ex-date 자동조회 — 데이터 소스가 종목코드 조회를 지원하지 않아 보류(D-140)
+- [ ] 국내주식 실시간 시세 확장 — 증권사 API+실계좌 연동 필요, Phase 2 후보(D-141)
 - [ ] Railway 배포 (`KOREAEXIM_API_KEY`/`KAKAO_CLIENT_ID`/`KAKAO_CLIENT_SECRET`/`FRONTEND_CALLBACK_URL` 환경변수 등록 필요)
 
 <br>
