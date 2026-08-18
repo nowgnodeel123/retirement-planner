@@ -6,6 +6,8 @@ import com.nowgnodeel.retirement_planner.asset.fx.entity.ExchangeRate;
 import com.nowgnodeel.retirement_planner.asset.fx.service.ExchangeRateService;
 import com.nowgnodeel.retirement_planner.asset.price.PriceService;
 import com.nowgnodeel.retirement_planner.asset.repository.*;
+import com.nowgnodeel.retirement_planner.common.audit.AuditAction;
+import com.nowgnodeel.retirement_planner.common.audit.AuditLogging;
 import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,7 @@ public class AssetService {
     private final ExchangeRateService exchangeRateService;
 
     @Transactional
+    @AuditLogging(action = AuditAction.CREATE, entityType = "Transaction(BUY)")
     public HoldingResponse buy(Long userId, BuyRequest request) {
         Account account = accountRepository.findByIdAndUserId(request.accountId(), userId)
                 .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
@@ -72,6 +75,7 @@ public class AssetService {
      * assetId만으로 소유자 검증까지 하므로(findByIdAndAccount_User_Id) accountId는 요청에 없다.
      */
     @Transactional
+    @AuditLogging(action = AuditAction.CREATE, entityType = "Transaction(SELL)")
     public HoldingResponse sell(Long userId, SellRequest request) {
         Asset asset = assetRepository.findByIdAndAccount_User_Id(request.assetId(), userId)
                 .orElseThrow(() -> new NotFoundException("자산을 찾을 수 없습니다."));

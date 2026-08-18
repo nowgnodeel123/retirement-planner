@@ -6,6 +6,8 @@ import com.nowgnodeel.retirement_planner.asset.dividend.repository.DividendRepos
 import com.nowgnodeel.retirement_planner.asset.entity.Asset;
 import com.nowgnodeel.retirement_planner.asset.entity.AssetCategory;
 import com.nowgnodeel.retirement_planner.asset.repository.AssetRepository;
+import com.nowgnodeel.retirement_planner.common.audit.AuditAction;
+import com.nowgnodeel.retirement_planner.common.audit.AuditLogging;
 import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ public class DividendService {
      * (계산을 시도하지 않고 명시적으로 막는다 — 13장 절대원칙과 동일한 태도).
      */
     @Transactional
+    @AuditLogging(action = AuditAction.CREATE, entityType = "Dividend")
     public DividendResponse create(Long userId, Long assetId, DividendCreateRequest request) {
         Asset asset = assetRepository.findByIdAndAccount_User_Id(assetId, userId)
                 .orElseThrow(() -> new NotFoundException("자산을 찾을 수 없습니다."));
@@ -63,6 +66,7 @@ public class DividendService {
 
     // D-056: 배당도 삭제 확인 대상. 소유자 검증은 리포지토리 쿼리 한 번으로 강제(8.1).
     @Transactional
+    @AuditLogging(action = AuditAction.DELETE, entityType = "Dividend")
     public void delete(Long userId, Long assetId, Long dividendId) {
         Dividend dividend = dividendRepository
                 .findByIdAndAssetIdAndAsset_Account_User_Id(dividendId, assetId, userId)

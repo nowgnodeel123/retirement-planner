@@ -3,6 +3,8 @@ package com.nowgnodeel.retirement_planner.asset.service;
 
 import com.nowgnodeel.retirement_planner.asset.entity.Account;
 import com.nowgnodeel.retirement_planner.asset.repository.AccountRepository;
+import com.nowgnodeel.retirement_planner.common.audit.AuditAction;
+import com.nowgnodeel.retirement_planner.common.audit.AuditLogging;
 import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
 import com.nowgnodeel.retirement_planner.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,7 @@ public class AccountService {
     private final UserRepository userRepository;
 
     @Transactional
+    @AuditLogging(action = AuditAction.CREATE, entityType = "Account")
     public Response create(Long userId, CreateRequest request) {
         Account account = Account.builder()
                 .user(userRepository.getReferenceById(userId))  // 프록시 참조만, 추가 쿼리 없음
@@ -40,6 +43,7 @@ public class AccountService {
     }
 
     @Transactional
+    @AuditLogging(action = AuditAction.UPDATE, entityType = "Account")
     public Response rename(Long userId, Long accountId, RenameRequest request) {
         Account account = accountRepository.findByIdAndUserId(accountId, userId)
                 .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
@@ -48,6 +52,7 @@ public class AccountService {
     }
 
     @Transactional
+    @AuditLogging(action = AuditAction.DELETE, entityType = "Account")
     public void delete(Long userId, Long accountId) {
         Account account = accountRepository.findByIdAndUserId(accountId, userId)
                 .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
