@@ -14,6 +14,7 @@ public class SimulationResponseDto {
     private TaxDetail taxDetail;
     private TaxBenefit taxBenefit;
     private DependentStatusWarning dependentStatusWarning;
+    private MonteCarloResult monteCarloResult;
     private Meta meta;
 
     // 은퇴 시점~90세까지 연도별 소득 구성. 결과 화면 차트용.
@@ -72,6 +73,19 @@ public class SimulationResponseDto {
         private long estimatedAnnualIncome;
         private long thresholdAnnualIncome;
         private String message;
+    }
+
+    // M16: 은퇴 후 LIQUID(주식/ETF) 수익률만 확률분포(평균 3%, 표준편차 8%,
+    // 은퇴 후 보수적 자산배분 가정)로 대체해 1,000회 반복한 결과. 확정 예측이
+    // 아니라 "이 가정 하에서 몇 %가 90세까지 버텼는지" 참고용 지표.
+    @Getter @Builder
+    public static class MonteCarloResult {
+        private int successRatePercent;
+        private long p10EndingBalance;
+        private long p50EndingBalance;
+        private long p90EndingBalance;
+        private int runs;
+        private double assumedReturnStddev;
     }
 
     @Getter @Builder

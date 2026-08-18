@@ -109,6 +109,35 @@ class SimulationServiceTest {
     }
 
     @Test
+    @DisplayName("feasible이면 몬테카를로 1,000회를 돌려 성공률·백분위 잔고를 반환한다 (M16/D-169)")
+    void monteCarlo_feasible_returnsStatisticallyValidResult() {
+        SimulationResponseDto res = simulationService.calculate(
+                request(30, 400.0, 10, 30.0, 20.0, 250.0));
+
+        var mc = res.getMonteCarloResult();
+        assertThat(res.getSummary().isFeasible()).isTrue();
+        assertThat(mc).isNotNull();
+        assertThat(mc.getRuns()).isEqualTo(1000);
+        assertThat(mc.getSuccessRatePercent()).isBetween(0, 100);
+        // 백분위는 정의상 항상 이 순서를 만족해야 한다(확률 표본이라도 정렬 후 뽑으므로 매번 성립)
+        assertThat(mc.getP10EndingBalance())
+                .isLessThanOrEqualTo(mc.getP50EndingBalance());
+        assertThat(mc.getP50EndingBalance())
+                .isLessThanOrEqualTo(mc.getP90EndingBalance());
+        assertThat(mc.getP10EndingBalance()).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("infeasible이면 몬테카를로를 돌리지 않는다 (M16/D-169)")
+    void monteCarlo_infeasible_isNull() {
+        SimulationResponseDto res = simulationService.calculate(
+                request(28, 300.0, 5, 0.0, 0.0, 500.0));
+
+        assertThat(res.getSummary().isFeasible()).isFalse();
+        assertThat(res.getMonteCarloResult()).isNull();
+    }
+
+    @Test
     @DisplayName("국민연금 납입기간이 나이 대비 과도하면 IllegalArgumentException")
     void pensionYearsPaid_exceedsAgeLimit_throws() {
         // WHY: currentAge=25면 만 18세부터 최대 7년 납입 가능한데 20년을 넣음(모순 입력, 검토 Q-1)

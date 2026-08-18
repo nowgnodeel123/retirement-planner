@@ -6,8 +6,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 
 /**
  * 은퇴 가능 나이 시뮬레이션.
@@ -75,6 +77,16 @@ public class SimulationService {
     private static final double PROPERTY_DEDUCTION = 10000.0;
     private static final double PROPERTY_INSURANCE_RATE = 0.000911;
 
+    // ── 몬테카를로(M16/D-169) ──
+    // WHY: 이 모델에서 변동성이 있는 자산은 사실상 LIQUID(주식/ETF)뿐이다(국민연금·
+    // 퇴직연금·IRP·연금저축은 확정 산식). 은퇴 후 매년 수익률을 평균
+    // POST_RETIREMENT_NOMINAL_RATE(3%), 표준편차 8%인 정규분포에서 뽑아 1,000번
+    // 반복 — 은퇴 후 보수적 자산배분을 가정한 표준편차이며, 실제 포트폴리오의
+    // 변동성과 다를 수 있는 모델링 가정임을 응답에 항상 명시한다.
+    private static final int MONTE_CARLO_RUNS = 1000;
+    private static final double MONTE_CARLO_RETURN_STDDEV = 0.08;
+    private static final double MONTE_CARLO_MIN_ANNUAL_RETURN = -0.5; // 단일 연도 -50% 하한(현실적 극단치 캡)
+
     // ── 건강보험 피부양자 자격 상실 판정(M15/D-168) ──
     // WHY 100%: 위 NATIONAL_PENSION_INCOME_RATIO(0.5)는 "지역가입자 보험료 산정"에만
     // 쓰이는 별개 계수다. "피부양자 자격 상실 여부" 판정 시 공적연금소득은 100% 전액
@@ -124,6 +136,19 @@ public class SimulationService {
         List<SimulationResponseDto.YearlyIncomePoint> timeline = toResponseTimeline(
                 search.projection().timeline());
 
+        SimulationResponseDto.MonteCarloResult monteCarloResult = null;
+        if (search.feasible()) {
+            MonteCarloResult mc = runMonteCarlo(req, estimatedRetirementAge, search.projection().monteCarloInputs());
+            monteCarloResult = SimulationResponseDto.MonteCarloResult.builder()
+                    .successRatePercent(mc.successRatePercent())
+                    .p10EndingBalance(mc.p10EndingBalance())
+                    .p50EndingBalance(mc.p50EndingBalance())
+                    .p90EndingBalance(mc.p90EndingBalance())
+                    .runs(MONTE_CARLO_RUNS)
+                    .assumedReturnStddev(MONTE_CARLO_RETURN_STDDEV)
+                    .build();
+        }
+
         return SimulationResponseDto.builder()
                 .summary(SimulationResponseDto.Summary.builder()
                         .totalMonthlyIncome(totalAfterTax)
@@ -161,6 +186,7 @@ public class SimulationService {
                         .build())
                 .taxBenefit(calculateTaxBenefit(req))
                 .dependentStatusWarning(calculateDependentStatusWarning(fy))
+                .monteCarloResult(monteCarloResult)
                 .meta(SimulationResponseDto.Meta.builder()
                         .yearsUntilRetirement(yearsUntilRetirement)
                         .totalPensionYears(totalPensionYears)
@@ -242,7 +268,16 @@ public class SimulationService {
     ) {}
 
     private record RetirementProjection(
-            boolean feasible, FirstYearBreakdown firstYearBreakdown, List<YearlyIncome> timeline
+            boolean feasible, FirstYearBreakdown firstYearBreakdown, List<YearlyIncome> timeline,
+            MonteCarloInputs monteCarloInputs
+    ) {}
+
+    // M16: 몬테카를로가 재사용할 "은퇴 시점 스냅샷". mid/national은 이 프로젝트의
+    // 기존 모델에서 확정 금액(변동성 없음)으로 취급하므로 그대로 재사용하고,
+    // liquid(주식/ETF)만 은퇴 후 수익률을 확률분포로 대체해서 반복 시뮬레이션한다.
+    private record MonteCarloInputs(
+            int pensionReceiptAge, long midMonthlyAfterTaxTotal, long nationalMonthlyAfterTax,
+            double liquidAtRetirement, double costBasis
     ) {}
 
     /** 후보 나이 하나가 실현 가능한지 + 1년차 소득 구성 + 연도별 타임라인을 함께 계산한다. */
@@ -352,7 +387,11 @@ public class SimulationService {
                 midMonthlyGrossTotal
         );
 
-        return new RetirementProjection(feasible, fy, timeline);
+        MonteCarloInputs mcInputs = new MonteCarloInputs(
+                pensionReceiptAge, midMonthlyAfterTaxTotal, nationalMonthlyAfterTax,
+                liquidAtRetirement, costBasis
+        );
+        return new RetirementProjection(feasible, fy, timeline, mcInputs);
     }
 
     // ======================================================================
@@ -395,6 +434,10 @@ public class SimulationService {
             balance *= (1 + annualRate);
         }
 
+        double balance() {
+            return balance;
+        }
+
         /**
          * 양도소득세(22%, 연 250만원 공제) gross-up.
          * WHY: 필요한 순금액이 정해져 있을 때, 세금 뗀 후에도 그 금액이
@@ -408,6 +451,69 @@ public class SimulationService {
             double denominator = 1 - STOCK_TAX_RATE * gainRatio;
             return numerator / denominator;
         }
+    }
+
+    // ======================================================================
+    // 몬테카를로(M16/D-169)
+    // ======================================================================
+
+    private record MonteCarloResult(
+            int successRatePercent, long p10EndingBalance, long p50EndingBalance, long p90EndingBalance
+    ) {}
+
+    /**
+     * 추정 은퇴나이 시점 스냅샷(mcInputs)에서 출발해, 은퇴 후 LIQUID 수익률만
+     * 확률분포로 대체하고 나머지(목표 생활비·연금)는 결정론적 모델 그대로 재사용해서
+     * {@link #MONTE_CARLO_RUNS}번 반복한다. 매 회차 90세까지 잔고가 버티면 성공.
+     */
+    private MonteCarloResult runMonteCarlo(SimulationRequestDto req, int retirementAge, MonteCarloInputs in) {
+        Random random = new Random();
+        int successCount = 0;
+        double[] endingBalances = new double[MONTE_CARLO_RUNS];
+
+        for (int run = 0; run < MONTE_CARLO_RUNS; run++) {
+            LiquidPortfolio liquid = new LiquidPortfolio(in.liquidAtRetirement(), in.costBasis());
+            boolean solvent = true;
+
+            for (int age = retirementAge; age < LIFE_EXPECTANCY; age++) {
+                int yearsFromNow = age - req.getCurrentAge();
+                double targetAnnual = req.getTargetMonthlyExpense() * 12 * Math.pow(1 + INFLATION_RATE, yearsFromNow);
+                double midAnnual = age >= MID_UNLOCK_AGE ? in.midMonthlyAfterTaxTotal() * 12 : 0;
+
+                double nationalAnnual = 0;
+                if (age >= in.pensionReceiptAge()) {
+                    int yearsSinceStart = age - in.pensionReceiptAge();
+                    nationalAnnual = in.nationalMonthlyAfterTax() * 12 * Math.pow(1 + INFLATION_RATE, yearsSinceStart);
+                }
+
+                double gapNet = Math.max(0, targetAnnual - midAnnual - nationalAnnual);
+                if (gapNet > 0) {
+                    Optional<Double> grossSale = liquid.withdrawNet(gapNet);
+                    if (grossSale.isEmpty()) {
+                        solvent = false;
+                        break;
+                    }
+                }
+
+                double randomReturn = POST_RETIREMENT_NOMINAL_RATE + MONTE_CARLO_RETURN_STDDEV * random.nextGaussian();
+                liquid.grow(Math.max(randomReturn, MONTE_CARLO_MIN_ANNUAL_RETURN));
+            }
+
+            if (solvent) successCount++;
+            endingBalances[run] = liquid.balance();
+        }
+
+        Arrays.sort(endingBalances);
+        return new MonteCarloResult(
+                (int) Math.round(successCount * 100.0 / MONTE_CARLO_RUNS),
+                Math.round(endingBalances[percentileIndex(0.10)]),
+                Math.round(endingBalances[percentileIndex(0.50)]),
+                Math.round(endingBalances[percentileIndex(0.90)])
+        );
+    }
+
+    private int percentileIndex(double p) {
+        return Math.min(MONTE_CARLO_RUNS - 1, (int) (MONTE_CARLO_RUNS * p));
     }
 
     // ======================================================================
