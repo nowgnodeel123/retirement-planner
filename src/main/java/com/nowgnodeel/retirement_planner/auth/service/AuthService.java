@@ -6,6 +6,7 @@ import com.nowgnodeel.retirement_planner.common.exception.InvalidCredentialsExce
 import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
 import com.nowgnodeel.retirement_planner.common.exception.PhoneNotVerifiedException;
 import com.nowgnodeel.retirement_planner.common.security.JwtTokenProvider;
+import com.nowgnodeel.retirement_planner.common.security.PiiCipher;
 import com.nowgnodeel.retirement_planner.user.entity.AuthProvider;
 import com.nowgnodeel.retirement_planner.user.entity.User;
 import com.nowgnodeel.retirement_planner.user.repository.UserRepository;
@@ -25,13 +26,15 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final PhoneVerificationService phoneVerificationService;
     private final RefreshTokenService refreshTokenService;
+    private final PiiCipher piiCipher;
 
     @Transactional
     public TokenResponse signup(SignupRequest request) {
         if (userRepository.existsByEmail(request.email())) {
             throw new DuplicateEmailException();
         }
-        if (userRepository.existsByPhone(request.phone())) {
+        String phoneHash = piiCipher.hmac(request.phone());
+        if (userRepository.existsByPhoneHash(phoneHash)) {
             throw new DuplicatePhoneException();
         }
         if (!phoneVerificationService.isVerified(request.phone())) {
@@ -45,7 +48,8 @@ public class AuthService {
                 request.name(),
                 request.birthDate(),
                 request.gender(),
-                request.phone()
+                request.phone(),
+                phoneHash
         );
         userRepository.save(user);
         phoneVerificationService.consume(request.phone());
@@ -95,7 +99,7 @@ public class AuthService {
             throw new PhoneNotVerifiedException();
         }
 
-        User user = userRepository.findByPhone(request.phone())
+        User user = userRepository.findByPhoneHash(piiCipher.hmac(request.phone()))
                 .orElseThrow(() -> new NotFoundException("해당 휴대전화번호로 가입된 계정을 찾을 수 없어요."));
         phoneVerificationService.consume(request.phone());
 

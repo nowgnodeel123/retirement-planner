@@ -12,9 +12,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmail(String email);
 
-    boolean existsByPhone(String phone);
+    // M14: phone 컬럼은 랜덤 IV로 암호화되어 있어 동등 조회가 불가능하다.
+    // phoneHash(결정적 HMAC)로만 조회한다.
+    boolean existsByPhoneHash(String phoneHash);
 
-    Optional<User> findByPhone(String phone);
+    Optional<User> findByPhoneHash(String phoneHash);
 
     Optional<User> findByProviderAndProviderId(AuthProvider provider, String providerId);
 }

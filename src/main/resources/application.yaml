@@ -68,6 +68,15 @@ price-api:
 opendart:
   api-key: ${OPENDART_API_KEY:}
 
+# M14: name/phone/birthDate 컬럼 암호화 키(AES-256-GCM). base64로 인코딩된 32바이트.
+# 로컬 생성 예시: openssl rand -base64 32
+pii:
+  encryption-key: ${PII_ENCRYPTION_KEY}
+  # 기존 평문 데이터를 1회성으로 암호화하는 PiiMigrationRunner 실행 스위치.
+  # 기본 false — 마이그레이션이 끝나면 다시 false로 되돌려 재실행을 막는다(멱등이라 위험하진 않지만 불필요한 스캔 방지).
+  migration:
+    enabled: ${PII_MIGRATION_ENABLED:false}
+
 sms:
   sens:
     enabled: ${SENS_ENABLED:false}

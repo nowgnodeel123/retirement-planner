@@ -40,7 +40,8 @@ class RefreshTokenServiceTest {
     void setUp() throws Exception {
         ReflectionTestUtils.setField(refreshTokenService, "refreshTokenValidityMs", 1_209_600_000L);
         user = User.createLocal("test@nest.com", "encoded", "동원", "이동원",
-                java.time.LocalDate.of(1995, 1, 1), com.nowgnodeel.retirement_planner.user.entity.Gender.MALE, "01012345678");
+                java.time.LocalDate.of(1995, 1, 1), com.nowgnodeel.retirement_planner.user.entity.Gender.MALE,
+                "01012345678", "hashed-01012345678");
         setId(user, 1L);
     }
 
