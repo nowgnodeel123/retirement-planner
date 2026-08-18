@@ -42,7 +42,7 @@
 | 카카오 소셜 로그인 | Spring Security OAuth2 Client 기반, 닉네임/이메일 동의항목 연동 |
 | 이메일 회원가입/로그인 | BCrypt 암호화, 이메일+휴대전화번호 중복 검증(부분 유니크 인덱스, D-135) |
 | 회원가입 프로필 필드 | 이메일/비밀번호/이름/생년월일/성별/휴대전화(인증) — MVP 스코프보다 넓은 개인정보 수집(D-121, ★핵심) |
-| 휴대전화 인증 | 발송/확인 API. 실제 SMS 벤더 미연동 상태의 개발용 목업(인증번호가 응답에 노출) — 프로덕션 노출 전 벤더 연동 필수(R-017) |
+| 휴대전화 인증 | 발송/확인 API. 네이버클라우드 SENS 실제 구현체(`NaverCloudSensSmsSender`)까지 작성 완료, 기본은 여전히 목업(`NoopSmsSender`, 인증번호가 응답에 노출) — 실제 벤더 계약은 서비스 런칭 시점까지 보류(D-149/D-150), 환경변수 4개만 설정하면 즉시 전환 |
 | 아이디 찾기 / 비밀번호 재설정 | 휴대전화 OTP 인증 후 마스킹된 이메일 조회, 이메일+휴대전화 일치 확인 후 재설정(D-133) |
 | JWT 인증 | 액세스 토큰 7일 단일 발급 (리프레시 토큰 미도입 — MVP 단순화, D-081) |
 
@@ -61,7 +61,7 @@
 |------|------|
 | 대시보드 | 총자산·손익 통합, **종목별 비중 집계**(도넛, D-136 — 계좌를 넘나들며 심볼로 합산), 계좌별 평가금액·손익률, 이번 달 매매+배당 인사이트 |
 | 수익 탭 | 계좌 스코프 기간(일/주/월/년/전체)×카테고리 필터 실현손익+배당 조회 |
-| 세금 탭 | 해외주식 양도소득세 추정치(기본공제 250만원·22%), 배당소득세 분리과세/종합신고 판정 — 국내주식 양도세는 조회하지 않음(D-064), 항상 "세무 전문가 검증 필요" 노출 |
+| 세금 탭 | 해외주식 양도소득세 추정치(기본공제 250만원·22%), 배당소득세 분리과세/종합신고 판정 — 국내주식 양도세는 조회하지 않음(D-064). 국내주식 배당(저장값=세후)은 15.4% 역환산해 세전 기준으로 판정(D-146, ★핵심), 항상 "세무 전문가 검증 필요" 노출 |
 
 ### 시세·환율 연동
 | 기능 | 설명 |
@@ -107,7 +107,7 @@
 
 ## 🗳 이직 포트폴리오 열람자를 위한 주요 설계 결정
 
-전체 이력은 워크스페이스 `STATE.md`의 Decision Log(D-001~D-141)에 남아있습니다. 그중 되돌리기 비용이 높거나 이후 결정의 전제가 된 ★핵심 항목만 요약합니다.
+전체 이력은 워크스페이스 `STATE.md`의 Decision Log(D-001~D-159)에 남아있습니다. 그중 되돌리기 비용이 높거나 이후 결정의 전제가 된 ★핵심 항목만 요약합니다.
 
 - **D-050 — 매매 히스토리 기반 파생값 아키텍처.** 자산의 수량·평단·손익률을 별도 컬럼에 저장하지 않고 `transactions` 테이블에서 조회 시점에 계산합니다. 실제 자산관리 앱의 표준 구조이며, 이후 M6(매매 히스토리)·M10(수익 탭)·M11(세금 탭)이 모두 이 위에서 만들어졌습니다.
 - **D-079 — 개발 착수 순서를 로그인/인증(M1)으로 재배치.** `user_id` 기준으로 테이블을 설계한 뒤 나머지 기능을 얹는 순서로 바꿔, 나중에 소유자 검증을 소급 추가하는 재작업을 방지했습니다. 세션 상한도 마일스톤 수(13개)에 1:1로 맞춰 재산정했습니다.
@@ -116,6 +116,8 @@
 - **D-114 — 은퇴 시뮬레이터 로그인 연동 범위를 "접근 가드"로 한정(M13).** 시뮬레이터는 계산 자체가 여전히 완전 무상태이며, 로그인은 화면·API 접근을 막는 용도로만 사용합니다. 계산 결과를 user에 귀속해 저장하는 기능(이력 조회 등)은 이번 스코프에 포함하지 않았습니다 — 향후 필요성이 생기면 별도 마일스톤으로 재검토합니다.
 - **D-135 — 프론트 필터만으로는 데이터 무결성을 보장할 수 없다는 걸 실제 오염 데이터로 확인.** 증권사 계좌에 허용되지 않는 암호화폐 자산이 저장돼 있는 걸 로컬 DB에서 발견했습니다. 원인은 카테고리 제한(D-037)이 프론트 UI 단에만 있고 서버에는 없었던 것 — `AssetService.buy()`에 서버사이드 검증을 추가해 malformed 요청으로도 무결성이 깨지지 않도록 막았습니다.
 - **D-140 — "API가 있다"와 "지금 쓸 수 있다"는 다르다는 걸 확인 후 배당 ex-date 자동조회를 보류.** data.go.kr에 배당 정보 API 자체는 실존했지만, 조회 키가 이 프로젝트가 저장해둔 종목코드가 아니라 법인등록번호/회사명뿐이었습니다. 회사명 문자열 매칭으로 우회하면 잘못된 종목의 배당 정보를 연결할 위험이 있어, 안전한 매핑 소스를 확보하기 전까지는 구현하지 않기로 했습니다 — "확정 가능한 데이터만 보여준다"는 원칙(D-058)을 새 기능에도 그대로 적용한 사례입니다.
+- **D-146 — 배당소득세 판정의 세후/세전 불일치 보완.** 국내주식 배당은 저장값 자체가 세후 순액(D-067)이라, 이를 그대로 합산해 금융소득종합과세 2천만원 기준과 비교하면 실제보다 과소산정될 수 있었습니다(R-016). 국내주식 배당에 한해 15.4%(소득세 14%+지방소득세 1.4%, 법정 고정 원천징수율) 역환산 후 합산하도록 수정했습니다.
+- **D-148/D-151/D-154 — 배당 ex-date 자동조회를 코드로는 완성했으나, 데이터 라이선스 문제로 프로덕션에 노출하지 않기로 결정.** D-140에서 보류했던 "종목코드→법인등록번호 매핑 소스 없음" 전제를 OpenDART 기업개황 API로 재조사해 뒤집고(D-148), 실제 매핑 서비스(`OpenDartCorpCodeService`)와 data.go.kr 배당정보 연동(`DividendScheduleService`)까지 구현했습니다(D-154). 그런데 이 data.go.kr 데이터셋이 **공공누리 2유형(출처표시+상업적 이용금지)** 라이선스라는 사실을 확인 — 네스트가 상업 서비스로 전환되면 한국예탁결제원과 별도 계약이 필요합니다. "코드가 완성됐다"와 "출시해도 된다"는 다르다는 걸 보여준 사례로, 관리자 전용 테스트 엔드포인트만 남기고 실사용자 화면에는 연결하지 않았습니다(R-018).
 
 <br>
 
@@ -128,10 +130,14 @@
 - **Gradle**, **Lombok**, **Jakarta Validation**
 
 ### 외부 API
-- **data.go.kr** — 국내주식 시세(D+1), KRX 상장종목 정보(종목검색 캐시용)
-- **Finnhub** — 해외주식 시세
+- **data.go.kr** — 국내주식 시세(D+1), KRX 상장종목 정보(종목검색 캐시용), 배당 ex-date(개발단계 전용, 아래 참고)
+- **Finnhub** — 해외주식 시세, 심볼 검색
 - **Upbit 공개 REST** — 코인 시세 (키 불요)
 - **한국수출입은행 오픈API** — USD/KRW 매매기준율
+- **OpenDART(금융감독원 전자공시)** — 종목코드→법인등록번호 매핑(`corp_codes` 캐시). 배당 ex-date 매핑용 인프라, 관리자 전용(D-148/D-151)
+- **네이버클라우드 SENS** — 휴대전화 인증 SMS 발송(코드 준비 완료, 계약은 배포 시점까지 보류(D-149/D-150))
+
+> ⚠️ **배당 ex-date 자동조회는 관리자 전용 테스트 엔드포인트로만 존재하며 프론트에 연결돼 있지 않습니다.** data.go.kr 배당정보 데이터셋이 공공누리 2유형(상업적 이용금지)이라, 상업 서비스로 전환 시 한국예탁결제원과 별도 계약이 필요합니다(D-154, R-018).
 
 ### Frontend
 - **Next.js** + **TypeScript** + **Tailwind CSS** ([retirement-planner-web](https://github.com/nowgnodeel123/retirement-planner-web))
@@ -179,7 +185,8 @@ src/main/java/com/nowgnodeel/retirement_planner/
 ├── user/                  # User(name/birthDate/gender/phone 포함), Gender enum, AuthProvider + 마이페이지(닉네임 수정)
 ├── auth/
 │   ├── controller/        # AuthController(회원가입/로그인/아이디찾기/비번재설정), PhoneVerificationController(인증 발송/확인)
-│   ├── service/           # AuthService, PhoneVerificationService(메모리 기반 목업, R-017)
+│   ├── service/           # AuthService, PhoneVerificationService(SmsSender.isEnabled()로 목업/실발송 자동 전환, D-149)
+│   ├── sms/                # SmsSender 인터페이스, NoopSmsSender(기본, 목업), NaverCloudSensSmsSender(실구현, sms.sens.enabled로 활성화, D-149)
 │   ├── dto/                # AuthDtos, PhoneDtos
 │   └── oauth/              # 카카오 OAuth2 흐름 전용
 ├── asset/
@@ -188,12 +195,13 @@ src/main/java/com/nowgnodeel/retirement_planner/
 │   ├── dividend/           # 배당 등록/조회/삭제 (M8) — 국내·해외주식 전용, 해외는 fx 필수
 │   ├── dashboard/          # 포트폴리오 전체 집계: summary/insights, 계좌별·종목별 집계 (M9, D-136, entity 없음)
 │   ├── profit/             # 계좌 스코프 실현손익+배당 조회 (M10, entity 없음)
-│   ├── tax/                # 양도소득세 추정 + 배당소득세 판정 (M11, entity 없음)
+│   ├── tax/                # 양도소득세 추정 + 배당소득세 판정, 국내주식 배당 세전 역환산(D-146) (M11, entity 없음)
 │   ├── price/              # PriceProvider 구현체 3종 + PriceService (시세 조회 디스패치, M4)
 │   ├── stock/               # 국내주식 종목마스터 캐시+검색, 해외주식 Finnhub 심볼 검색(D-139)
+│   │                        # + CorpCode 엔티티/OpenDartCorpCodeService(종목코드→법인등록번호, D-151), DividendScheduleService(배당 ex-date, 관리자 전용·미노출, D-154)
 │   └── fx/                  # 환율(한국수출입은행) 연동 (M5) + 일반 사용자용 조회 엔드포인트
 ├── common/
-│   ├── config/             # SecurityConfig, RestClientConfig
+│   ├── config/             # SecurityConfig, RestClientConfig(대용량 다운로드용 bulkDownloadRestClient 포함, D-151)
 │   ├── security/            # JwtTokenProvider, JwtAuthenticationFilter
 │   └── exception/           # 공통/인증 예외 + 핸들러 (PhoneNotVerifiedException, DuplicatePhoneException 등)
 ├── controller/
@@ -214,7 +222,8 @@ src/main/resources/
     ├── V3__create_domestic_stocks_table.sql
     ├── V4__create_exchange_rates_table.sql
     ├── V5__add_signup_profile_fields_to_users.sql   # name/birth_date/gender/phone (D-121)
-    └── V6__add_unique_index_on_users_phone.sql      # phone 부분 유니크 인덱스 (D-135)
+    ├── V6__add_unique_index_on_users_phone.sql      # phone 부분 유니크 인덱스 (D-135)
+    └── V7__create_corp_codes_table.sql              # 종목코드→법인등록번호 매핑 캐시 (D-151)
 ```
 
 > 은퇴 시뮬레이터(`controller`/`service`/`dto` 최상위 패키지)는 레거시 구조로 남아있습니다. 향후 `retirement` 기능 패키지로 재편 예정(백로그) — 지금 리팩터링하지 않기로 확정된 항목입니다.
@@ -254,10 +263,12 @@ Flyway가 스키마를 자동으로 생성하므로(V1~V4), DB만 비어있는 �
 | `DATA_GO_KR_API_KEY` | **필수** — 국내주식 시세/종목마스터 조회 | |
 | `FINNHUB_API_KEY` | **필수** — 해외주식 시세 조회 | |
 | `KOREAEXIM_API_KEY` | **필수** — 원/달러 환율 조회 | |
+| `OPENDART_API_KEY` | (선택) 배당 ex-date 매핑 인프라용, 없으면 관련 기능 전체가 Optional.empty()로 조용히 degrade(D-151) — 배포 시점까지 발급 보류(D-152) | |
+| `SENS_ENABLED` / `SENS_*` | (선택) `true`로 설정 시 실제 SMS 발송(NaverCloudSensSmsSender), 기본은 목업 — 계약은 서비스 런칭 시점까지 보류(D-150) | |
 
 IntelliJ 사용 시 Run/Debug Configurations → Environment variables에 필수값을 추가하세요.
 
-> ⚠️ Railway 배포 시 `KOREAEXIM_API_KEY`/`KAKAO_CLIENT_ID`/`KAKAO_CLIENT_SECRET`/`FRONTEND_CALLBACK_URL`(운영 도메인) 환경변수 등록이 아직 안 되어 있습니다 — 현재 로컬 검증만 완료된 상태입니다. 카카오 개발자 콘솔에도 운영 redirect URI 추가가 필요합니다.
+> ⚠️ Railway 배포 시 아래 환경변수 등록이 아직 안 되어 있습니다 — 현재 로컬 검증만 완료된 상태입니다: `KAKAO_CLIENT_ID`/`KAKAO_CLIENT_SECRET`/`FRONTEND_CALLBACK_URL`(운영 도메인)/`JWT_SECRET`/`DATA_GO_KR_API_KEY`/`FINNHUB_API_KEY`/`KOREAEXIM_API_KEY`/`DB_URL`·`DB_USERNAME`·`DB_PASSWORD`(Railway Postgres 플러그인 자동 주입 변수명과 매핑 확인 필요). 카카오 개발자 콘솔에도 운영 redirect URI 추가가 필요합니다. `OPENDART_API_KEY`/`SENS_*`는 배포 시점에 함께 등록 예정(D-150/D-152, 코드는 이미 준비됨).
 
 ### 3. 실행
 
@@ -328,6 +339,8 @@ GET  /api/foreign-stocks/search?keyword={q}           해외주식 종목검색(
 GET  /api/exchange-rates/{currency}                    최근 매매기준율 조회(일반 사용자용, 읽기 전용)
 POST /api/admin/domestic-stocks/refresh               국내주식 종목마스터 수동 갱신
 POST /api/admin/exchange-rates/refresh                환율 수동 갱신
+POST /api/admin/corp-codes/refresh                     종목코드→법인등록번호 매핑 캐시 수동 갱신 (D-151)
+GET  /api/admin/domestic-stocks/{symbolCode}/dividend-schedule   배당 ex-date 조회 — 관리자 전용 테스트용, 실사용자 노출 안 함(D-154, 라이선스 이슈)
 ```
 
 ### 은퇴 시뮬레이션 (M13: 인증 필수)
@@ -457,7 +470,7 @@ DC형: 기존잔액×(1+r)^n + Σ(매년 월급 1개월치 × (1+r)^남은연수
 - 본 계산기는 실제 세법·연금 산식을 단순화 반영한 추산치이며, 실제 수령액과 다를 수 있습니다.
 - 국내주식 시세는 전일 종가(D+1) 기준이며 실시간이 아닙니다.
 - 평균단가는 매도 시 이동평균법으로 재계산하지 않고, 전체 매수 내역 기준을 그대로 유지합니다(MVP 단순화, D-050).
-- 양도소득세·배당소득세 추정 기능은 정식 세무 자문이 아니며, UI에 "세무 전문가 검증 필요" 문구가 상시 노출됩니다. 배당소득세 판정은 국내주식 배당 저장값(세후 순액)을 그대로 합산해 실제 세전 금융소득보다 과소산정될 수 있습니다(R-016, 출시 전 재검토 예정).
+- 양도소득세·배당소득세 추정 기능은 정식 세무 자문이 아니며, UI에 "세무 전문가 검증 필요" 문구가 상시 노출됩니다. 배당소득세 판정은 국내주식 배당 저장값(세후 순액)을 15.4% 역환산한 세전 기준으로 판정합니다(D-146).
 
 <br>
 
@@ -484,9 +497,13 @@ M13 이후 마일스톤 외 추가 개선(백로그 소진, QA 페이즈 착수 
 - [x] 매수/매도 카테고리-기관유형 서버 무결성 검증, 계좌 이름 수정
 - [x] 대시보드 종목별 비중 재설계, 계좌별/종목별 집계
 - [x] 해외주식 종목 자동완성(Finnhub 심볼 검색)
-- [ ] 배당 ex-date 자동조회 — 데이터 소스가 종목코드 조회를 지원하지 않아 보류(D-140)
+- [x] 국내주식 시세 조회 간헐적 null 원인 수정 + 실제 API 키로 라이브 검증(D-145/D-153)
+- [x] 배당소득세 세후/세전 불일치 보완 — 국내주식 배당 15.4% 역환산(D-146)
+- [x] 매수/매도 폼 완전 재사용 통합(D-147/D-155)
+- [x] SMS 벤더(SENS) 실제 구현체 작성 — 계약은 배포 시점까지 보류(D-149/D-150)
+- [x] 배당 ex-date 종목코드→법인등록번호 매핑(OpenDART) + data.go.kr 실연동 완성 — **라이선스(공공누리 2유형, 상업적 이용금지) 문제로 프로덕션 미노출 확정, 관리자 전용으로만 유지**(D-148/D-151/D-154, R-018)
 - [ ] 국내주식 실시간 시세 확장 — 증권사 API+실계좌 연동 필요, Phase 2 후보(D-141)
-- [ ] Railway 배포 (`KOREAEXIM_API_KEY`/`KAKAO_CLIENT_ID`/`KAKAO_CLIENT_SECRET`/`FRONTEND_CALLBACK_URL` 환경변수 등록 필요)
+- [ ] Railway 배포 (`KAKAO_CLIENT_ID`/`KAKAO_CLIENT_SECRET`/`FRONTEND_CALLBACK_URL`/`JWT_SECRET`/`DATA_GO_KR_API_KEY`/`FINNHUB_API_KEY`/`KOREAEXIM_API_KEY`/`DB_*` 환경변수 등록 필요)
 
 <br>
 
