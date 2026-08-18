@@ -30,6 +30,9 @@ dependencies {
     // M1/M2: 스키마 관리 (D-080)
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
+    // M14(D-162): 외부 시세 API 서킷브레이커 — AOP는 @CircuitBreaker 프록시에 필요
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'

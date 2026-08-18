@@ -1,6 +1,7 @@
 package com.nowgnodeel.retirement_planner.asset.price;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -18,6 +19,7 @@ public class CryptoPriceProvider implements PriceProvider {
     private final RestClient externalApiRestClient;
 
     @Override
+    @CircuitBreaker(name = "cryptoPrice", fallbackMethod = "fallback")
     public BigDecimal getCurrentPrice(String symbol) {
         JsonNode body = externalApiRestClient.get()
                 .uri(uriBuilder -> uriBuilder
@@ -33,5 +35,9 @@ public class CryptoPriceProvider implements PriceProvider {
             throw new IllegalStateException("코인 시세 조회 실패: " + symbol);
         }
         return new BigDecimal(body.get(0).get("trade_price").asText());
+    }
+
+    private BigDecimal fallback(String symbol, Throwable t) {
+        throw new IllegalStateException("코인 시세 조회 실패(서킷 오픈 또는 하위 예외): " + symbol, t);
     }
 }

@@ -1,6 +1,7 @@
 package com.nowgnodeel.retirement_planner.asset.price;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,7 @@ public class DomesticStockPriceProvider implements PriceProvider {
     private String apiKey;
 
     @Override
+    @CircuitBreaker(name = "domesticStockPrice", fallbackMethod = "fallback")
     public BigDecimal getCurrentPrice(String symbolCode) {
         // KRX상장종목정보는 'A' 접두사 포함(A005930), 주식시세정보는 접두사 없는 6자리(005930)로 추정됨
         String queryCode = symbolCode.startsWith("A") ? symbolCode.substring(1) : symbolCode;
@@ -66,5 +68,9 @@ public class DomesticStockPriceProvider implements PriceProvider {
             log.info("basDt={} symbol={}(query={}) 유효한 시세 없음", basDt, symbolCode, queryCode);
         }
         throw new IllegalStateException("국내주식 시세 조회 실패(최근 10일 내 데이터 없음): " + symbolCode);
+    }
+
+    private BigDecimal fallback(String symbolCode, Throwable t) {
+        throw new IllegalStateException("국내주식 시세 조회 실패(서킷 오픈 또는 하위 예외): " + symbolCode, t);
     }
 }

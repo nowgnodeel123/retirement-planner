@@ -53,7 +53,9 @@ app:
   share-url: https://retirement-planner.vercel.app
   frontend-callback-url: ${FRONTEND_CALLBACK_URL:http://localhost:3000/auth/callback}
   national-pension:
-    a-value: 319.35
+    # 2025.12~2026.11 적용 실제 값(319.3511만원, 국민연금공단) — 기존 319.35는 근사치였음(M14 세법 검증 계기 수정)
+    # 매년 갱신되는 값을 하드코딩하는 한계는 여전함 — 자동화는 M15 스코프
+    a-value: 319.3511
 
 price-api:
   data-go-kr:
@@ -73,3 +75,26 @@ sms:
     secret-key: ${SENS_SECRET_KEY:}
     service-id: ${SENS_SERVICE_ID:}
     sender-phone: ${SENS_SENDER_PHONE:}
+
+# M14(D-162 후속) — 외부 시세 API가 지속 장애 상태일 때 매 요청마다 타임아웃(2~4초)을
+# 다 채우고 나서야 캐시로 폴백하는 걸 막는다. 실패가 쌓이면 회로를 열어 즉시 캐시 폴백으로
+# 직행하고, 일정 시간 뒤 반개방 상태에서 소수 요청만 흘려보내 복구를 확인한다.
+# PriceService의 기존 캐시/stale-on-error 흡수(D-058)는 그대로 유지 — 서킷브레이커는
+# "빠르게 실패"만 담당하고 사용자 응답 형태(Optional.empty vs 캐시값)는 바꾸지 않는다.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      domesticStockPrice:
+        base-config: default
+      foreignStockPrice:
+        base-config: default
+      cryptoPrice:
+        base-config: default
