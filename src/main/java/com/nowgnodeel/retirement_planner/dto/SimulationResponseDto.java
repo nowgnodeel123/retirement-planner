@@ -13,6 +13,7 @@ public class SimulationResponseDto {
     private Breakdown breakdown;
     private TaxDetail taxDetail;
     private TaxBenefit taxBenefit;
+    private DependentStatusWarning dependentStatusWarning;
     private Meta meta;
 
     // 은퇴 시점~90세까지 연도별 소득 구성. 결과 화면 차트용.
@@ -59,6 +60,18 @@ public class SimulationResponseDto {
         private long healthInsuranceIncomePart;
         private long healthInsurancePropertyPart;
         private long propertyDeductionApplied;
+    }
+
+    // M15: 건강보험 피부양자 자격 상실 가능성 추정(D-168). 확정 판정이 아니라
+    // 공적연금+사적연금(둘 다 세전, 100% 반영 — 국민건강보험공단 확인 기준)만 더한
+    // 단순 추정치다. 금융소득(이자·배당)·근로·사업소득 등 다른 소득원은 포함하지
+    // 않으므로 실제로는 이보다 더 일찍 탈락 기준을 넘을 수도 있다 — message에 항상 명시.
+    @Getter @Builder
+    public static class DependentStatusWarning {
+        private boolean atRisk;
+        private long estimatedAnnualIncome;
+        private long thresholdAnnualIncome;
+        private String message;
     }
 
     @Getter @Builder

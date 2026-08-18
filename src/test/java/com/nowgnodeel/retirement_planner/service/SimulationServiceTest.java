@@ -85,6 +85,30 @@ class SimulationServiceTest {
     }
 
     @Test
+    @DisplayName("연금 소득이 낮으면 건강보험 피부양자 위험 없음으로 추정한다 (M15/D-168)")
+    void dependentStatusWarning_lowPensionIncome_notAtRisk() {
+        SimulationResponseDto res = simulationService.calculate(
+                request(59, 200.0, 10, 0.0, 0.0, 100.0));
+
+        var warning = res.getDependentStatusWarning();
+        assertThat(warning.isAtRisk()).isFalse();
+        assertThat(warning.getEstimatedAnnualIncome()).isEqualTo(1176);
+        assertThat(warning.getThresholdAnnualIncome()).isEqualTo(2000);
+    }
+
+    @Test
+    @DisplayName("연금 소득이 높으면 건강보험 피부양자 위험 있음으로 추정한다 (M15/D-168)")
+    void dependentStatusWarning_highPensionIncome_atRisk() {
+        SimulationResponseDto res = simulationService.calculate(
+                request(30, 400.0, 10, 30.0, 20.0, 250.0));
+
+        var warning = res.getDependentStatusWarning();
+        assertThat(warning.isAtRisk()).isTrue();
+        assertThat(warning.getEstimatedAnnualIncome()).isEqualTo(11724);
+        assertThat(warning.getMessage()).contains("추정").contains("국민건강보험공단");
+    }
+
+    @Test
     @DisplayName("국민연금 납입기간이 나이 대비 과도하면 IllegalArgumentException")
     void pensionYearsPaid_exceedsAgeLimit_throws() {
         // WHY: currentAge=25면 만 18세부터 최대 7년 납입 가능한데 20년을 넣음(모순 입력, 검토 Q-1)

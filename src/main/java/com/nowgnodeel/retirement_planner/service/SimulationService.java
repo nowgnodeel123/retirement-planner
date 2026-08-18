@@ -75,6 +75,12 @@ public class SimulationService {
     private static final double PROPERTY_DEDUCTION = 10000.0;
     private static final double PROPERTY_INSURANCE_RATE = 0.000911;
 
+    // ── 건강보험 피부양자 자격 상실 판정(M15/D-168) ──
+    // WHY 100%: 위 NATIONAL_PENSION_INCOME_RATIO(0.5)는 "지역가입자 보험료 산정"에만
+    // 쓰이는 별개 계수다. "피부양자 자격 상실 여부" 판정 시 공적연금소득은 100% 전액
+    // 반영된다(국민건강보험공단 확인, M14 세법 검증 세션에서 정정) — 이 둘을 섞지 않는다.
+    private static final double DEPENDENT_STATUS_INCOME_THRESHOLD = 2000.0;
+
     // ── 주식 양도세 ──
     private static final double STOCK_TAX_RATE = 0.22;
     private static final double STOCK_TAX_EXEMPT = 250.0;
@@ -154,6 +160,7 @@ public class SimulationService {
                         .propertyDeductionApplied(0)
                         .build())
                 .taxBenefit(calculateTaxBenefit(req))
+                .dependentStatusWarning(calculateDependentStatusWarning(fy))
                 .meta(SimulationResponseDto.Meta.builder()
                         .yearsUntilRetirement(yearsUntilRetirement)
                         .totalPensionYears(totalPensionYears)
@@ -215,7 +222,11 @@ public class SimulationService {
     private record FirstYearBreakdown(
             long nationalGross, long nationalAfterTax,
             long midGross, long midAfterTax, double midTaxRate,
-            long liquidWithdrawalGross, long liquidWithdrawalAfterTax
+            long liquidWithdrawalGross, long liquidWithdrawalAfterTax,
+            // 은퇴나이와 무관하게 "국민연금+퇴직연금 계열이 둘 다 열렸을 때" 받을 금액.
+            // nationalGross/midGross는 candidateAge가 수령개시나이 이전이면 0으로 가려지므로
+            // 피부양자 판정(M15/D-168)처럼 "정상 수령 시점 기준"이 필요한 계산엔 이 값을 쓴다.
+            long steadyStateNationalGross, long steadyStateMidGross
     ) {}
 
     /**
@@ -336,7 +347,9 @@ public class SimulationService {
                 candidateAge >= MID_UNLOCK_AGE ? midMonthlyAfterTaxTotal : 0,
                 privateTaxRate,
                 firstYearLiquidGross,
-                firstYearLiquidAfterTax
+                firstYearLiquidAfterTax,
+                nationalMonthlyGross,
+                midMonthlyGrossTotal
         );
 
         return new RetirementProjection(feasible, fy, timeline);
@@ -524,6 +537,35 @@ public class SimulationService {
         result.propertyPart = propertyPart;
         result.isPrecise = true;
         return result;
+    }
+
+    /**
+     * 건강보험 피부양자 자격 상실 가능성 추정(M15/D-168) — "국민연금+퇴직연금 계열이
+     * 둘 다 정상 수령을 시작했을 때"(steady state) 기준. 은퇴 직후 1년차 소득으로
+     * 판단하면 아직 연금이 잠겨있어 항상 "안전"으로 나와 의미가 없다(이 서비스의
+     * 주 시나리오가 55세 이전 조기은퇴이므로 더더욱). WHY 단순화: 실제 판정은
+     * 금융소득(이자·배당)·근로·사업·기타소득까지 전부 합산하지만, 이 시뮬레이터가
+     * 아는 소득원은 공적연금·사적연금뿐이라 이 둘만으로 이미 기준을 넘는지만 보는
+     * 보수적 하한 추정치다 — 실제로는 다른 소득이 더해져 더 일찍 기준을 넘을 수 있다.
+     */
+    private SimulationResponseDto.DependentStatusWarning calculateDependentStatusWarning(FirstYearBreakdown fy) {
+        long estimatedAnnualIncome = (fy.steadyStateNationalGross() + fy.steadyStateMidGross()) * 12;
+        boolean atRisk = estimatedAnnualIncome > (long) DEPENDENT_STATUS_INCOME_THRESHOLD;
+
+        String message = atRisk
+                ? "추정: 연금을 정상 수령하기 시작하면 공적연금+사적연금만으로도 건강보험 피부양자 소득 기준(연 "
+                        + (long) DEPENDENT_STATUS_INCOME_THRESHOLD
+                        + "만원)을 넘을 수 있어요. 금융소득·근로소득 등은 반영하지 않은 단순 추정치이니, 정확한 판정은 국민건강보험공단에 확인하세요."
+                : "추정: 연금을 정상 수령하는 시점 기준으로도 공적연금+사적연금 합계가 건강보험 피부양자 소득 기준(연 "
+                        + (long) DEPENDENT_STATUS_INCOME_THRESHOLD
+                        + "만원) 이내예요. 다른 소득(금융소득·근로소득 등)이 있다면 기준을 넘을 수 있으니 참고만 하세요.";
+
+        return SimulationResponseDto.DependentStatusWarning.builder()
+                .atRisk(atRisk)
+                .estimatedAnnualIncome(estimatedAnnualIncome)
+                .thresholdAnnualIncome((long) DEPENDENT_STATUS_INCOME_THRESHOLD)
+                .message(message)
+                .build();
     }
 
     // ======================================================================
