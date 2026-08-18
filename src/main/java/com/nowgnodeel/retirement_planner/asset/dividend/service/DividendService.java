@@ -44,9 +44,14 @@ public class DividendService {
             throw new IllegalArgumentException("해외주식은 환율(fx) 값이 필요합니다.");
         }
 
+        if (request.exDividendDate() != null && request.exDividendDate().isAfter(request.payDate())) {
+            throw new IllegalArgumentException("배당락일은 지급일보다 늦을 수 없습니다.");
+        }
+
         Dividend dividend = Dividend.builder()
                 .asset(asset)
                 .payDate(request.payDate())
+                .exDividendDate(request.exDividendDate())
                 .amount(request.amount())
                 .fx(asset.getCategory() == AssetCategory.FOREIGN_STOCK ? request.fx() : null)
                 .build();
@@ -76,7 +81,7 @@ public class DividendService {
 
     private DividendResponse toResponse(Dividend d) {
         return new DividendResponse(
-                d.getId(), d.getAsset().getId(), d.getPayDate(), d.getAmount(), d.getFx()
+                d.getId(), d.getAsset().getId(), d.getPayDate(), d.getExDividendDate(), d.getAmount(), d.getFx()
         );
     }
 }

@@ -34,6 +34,11 @@ public class Dividend {
     @Column(name = "pay_date", nullable = false)
     private LocalDate payDate;
 
+    // 배당락일(선택 입력) — 자동조회는 라이선스 문제로 실사용자 노출 안 함(R-018 종결,
+    // 수동입력으로 대체). 모르면 비워둬도 된다.
+    @Column(name = "ex_dividend_date")
+    private LocalDate exDividendDate;
+
     @Column(nullable = false, precision = 18, scale = 2)
     private BigDecimal amount;
 
@@ -44,9 +49,10 @@ public class Dividend {
     private LocalDateTime createdAt;
 
     @Builder
-    private Dividend(Asset asset, LocalDate payDate, BigDecimal amount, BigDecimal fx) {
+    private Dividend(Asset asset, LocalDate payDate, LocalDate exDividendDate, BigDecimal amount, BigDecimal fx) {
         this.asset = asset;
         this.payDate = payDate;
+        this.exDividendDate = exDividendDate;
         this.amount = amount;
         this.fx = fx;
     }
