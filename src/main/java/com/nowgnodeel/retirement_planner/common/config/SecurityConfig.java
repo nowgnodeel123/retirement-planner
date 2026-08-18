@@ -4,6 +4,7 @@ import com.nowgnodeel.retirement_planner.auth.oauth.CustomOAuth2UserService;
 import com.nowgnodeel.retirement_planner.auth.oauth.OAuth2SuccessHandler;
 import com.nowgnodeel.retirement_planner.common.security.JwtAuthenticationFilter;
 import com.nowgnodeel.retirement_planner.common.security.JwtTokenProvider;
+import com.nowgnodeel.retirement_planner.common.security.RateLimitFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -51,7 +52,9 @@ public class SecurityConfig {
                 .addFilterBefore(
                         new JwtAuthenticationFilter(jwtTokenProvider),
                         UsernamePasswordAuthenticationFilter.class
-                );
+                )
+                // M14: JwtAuthenticationFilter 다음이어야 인증된 요청이 userId 기준으로 묶인다.
+                .addFilterAfter(new RateLimitFilter(), JwtAuthenticationFilter.class);
 
         return http.build();
     }
