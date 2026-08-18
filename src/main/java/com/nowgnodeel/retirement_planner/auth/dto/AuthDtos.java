@@ -27,7 +27,12 @@ public class AuthDtos {
             @NotBlank String password
     ) {}
 
-    public record TokenResponse(String accessToken) {}
+    public record TokenResponse(String accessToken, String refreshToken) {}
+
+    // RTR(D-161/M14): 회전마다 새 refreshToken을 발급하므로 응답에 항상 새 값을 실어보낸다.
+    public record RefreshRequest(@NotBlank String refreshToken) {}
+
+    public record LogoutRequest(@NotBlank String refreshToken) {}
 
     // 아이디(이메일) 찾기 — 휴대전화 인증(PhoneVerificationService)이 선행되어야 한다.
     public record FindEmailRequest(

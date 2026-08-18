@@ -32,6 +32,7 @@ class AuthServiceTest {
     @Mock org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     @Mock JwtTokenProvider jwtTokenProvider;
     @Mock PhoneVerificationService phoneVerificationService;
+    @Mock RefreshTokenService refreshTokenService;
     @InjectMocks AuthService authService;
 
     private static final LocalDate BIRTH_DATE = LocalDate.of(1995, 1, 1);
@@ -44,11 +45,13 @@ class AuthServiceTest {
         given(passwordEncoder.encode("password123")).willReturn("encoded");
         given(userRepository.save(any(User.class))).willAnswer(inv -> inv.getArgument(0));
         given(jwtTokenProvider.createAccessToken(any())).willReturn("access-token");
+        given(refreshTokenService.issue(any())).willReturn("refresh-token");
 
         TokenResponse response = authService.signup(new SignupRequest(
                 "test@nest.com", "password123", "동원", "이동원", BIRTH_DATE, Gender.MALE, "01012345678"));
 
         assertThat(response.accessToken()).isEqualTo("access-token");
+        assertThat(response.refreshToken()).isEqualTo("refresh-token");
     }
 
     @Test
@@ -91,10 +94,12 @@ class AuthServiceTest {
         given(userRepository.findByEmail("test@nest.com")).willReturn(Optional.of(user));
         given(passwordEncoder.matches("password123", "encoded")).willReturn(true);
         given(jwtTokenProvider.createAccessToken(any())).willReturn("access-token");
+        given(refreshTokenService.issue(any())).willReturn("refresh-token");
 
         TokenResponse response = authService.login(new LoginRequest("test@nest.com", "password123"));
 
         assertThat(response.accessToken()).isEqualTo("access-token");
+        assertThat(response.refreshToken()).isEqualTo("refresh-token");
     }
 
     @Test
@@ -162,5 +167,36 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.resetPassword(
                 new ResetPasswordRequest("test@nest.com", "01012345678", "newPassword123")))
                 .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("refresh 성공 시 새 액세스+리프레시 토큰 쌍을 반환한다 (RTR, D-161/M14)")
+    void refresh_success() {
+        given(refreshTokenService.rotate("old-refresh-token"))
+                .willReturn(new RefreshTokenService.RotationResult(1L, "new-refresh-token"));
+        given(jwtTokenProvider.createAccessToken(1L)).willReturn("new-access-token");
+
+        TokenResponse response = authService.refresh("old-refresh-token");
+
+        assertThat(response.accessToken()).isEqualTo("new-access-token");
+        assertThat(response.refreshToken()).isEqualTo("new-refresh-token");
+    }
+
+    @Test
+    @DisplayName("이미 소진된 refresh token 재사용 시 RefreshTokenService가 던진 예외를 그대로 전파한다")
+    void refresh_reuseDetected() {
+        given(refreshTokenService.rotate("stolen-token"))
+                .willThrow(new com.nowgnodeel.retirement_planner.common.exception.RefreshTokenReuseDetectedException());
+
+        assertThatThrownBy(() -> authService.refresh("stolen-token"))
+                .isInstanceOf(com.nowgnodeel.retirement_planner.common.exception.RefreshTokenReuseDetectedException.class);
+    }
+
+    @Test
+    @DisplayName("로그아웃은 해당 유저의 모든 활성 refresh token을 무효화한다")
+    void logout_revokesAllForUser() {
+        authService.logout("some-refresh-token");
+
+        org.mockito.Mockito.verify(refreshTokenService).revokeAllForUserByRawToken("some-refresh-token");
     }
 }

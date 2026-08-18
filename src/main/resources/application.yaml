@@ -44,7 +44,10 @@ logging:
 
 jwt:
   secret: ${JWT_SECRET}
-  access-token-validity-ms: 604800000
+  # RTR 도입(D-161/M14) — accessToken은 짧게 끊고 refreshToken 회전으로 세션을 이어간다.
+  # 기존 7일 단일발급(D-081)은 폐기, 프론트 lib/api.ts가 401 시 자동 갱신하는 것과 세트.
+  access-token-validity-ms: 900000       # 15분
+  refresh-token-validity-ms: 1209600000  # 14일
 
 app:
   share-url: https://retirement-planner.vercel.app

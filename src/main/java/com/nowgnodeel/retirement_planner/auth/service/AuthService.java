@@ -24,6 +24,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final PhoneVerificationService phoneVerificationService;
+    private final RefreshTokenService refreshTokenService;
 
     @Transactional
     public TokenResponse signup(SignupRequest request) {
@@ -49,9 +50,10 @@ public class AuthService {
         userRepository.save(user);
         phoneVerificationService.consume(request.phone());
 
-        return new TokenResponse(jwtTokenProvider.createAccessToken(user.getId()));
+        return issueTokenResponse(user);
     }
 
+    @Transactional
     public TokenResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.email())
                 .orElseThrow(InvalidCredentialsException::new);
@@ -60,7 +62,31 @@ public class AuthService {
             throw new InvalidCredentialsException();
         }
 
-        return new TokenResponse(jwtTokenProvider.createAccessToken(user.getId()));
+        return issueTokenResponse(user);
+    }
+
+    // RTR 회전(D-161/M14) — 기존 refreshToken을 소진하고 access+refresh 한 쌍을 새로 발급.
+    // 재사용 감지 시 RefreshTokenService가 해당 유저의 모든 활성 토큰을 revoke하고 예외를 던진다.
+    @Transactional
+    public TokenResponse refresh(String refreshToken) {
+        RefreshTokenService.RotationResult result = refreshTokenService.rotate(refreshToken);
+        return new TokenResponse(
+                jwtTokenProvider.createAccessToken(result.userId()),
+                result.newRawToken()
+        );
+    }
+
+    // 로그아웃 시 이 기기 하나만이 아니라 유저의 모든 활성 refresh token을 무효화한다
+    // (탈취된 다른 세션이 있었다면 이 기회에 같이 끊어내는 게 안전 — 재로그인 요구는 낮은 비용).
+    @Transactional
+    public void logout(String refreshToken) {
+        refreshTokenService.revokeAllForUserByRawToken(refreshToken);
+    }
+
+    private TokenResponse issueTokenResponse(User user) {
+        String accessToken = jwtTokenProvider.createAccessToken(user.getId());
+        String refreshToken = refreshTokenService.issue(user);
+        return new TokenResponse(accessToken, refreshToken);
     }
 
     // 아이디(이메일) 찾기 — 휴대전화 인증을 먼저 마쳐야 조회 가능
