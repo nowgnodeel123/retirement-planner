@@ -6,6 +6,7 @@ import com.nowgnodeel.retirement_planner.asset.stock.repository.DomesticStockRep
 import com.nowgnodeel.retirement_planner.asset.stock.service.DividendScheduleService;
 import com.nowgnodeel.retirement_planner.asset.stock.service.DomesticStockMasterService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,10 +21,13 @@ public class DomesticStockController {
     private final DomesticStockMasterService domesticStockMasterService;
     private final DividendScheduleService dividendScheduleService;
 
-    // 자산 추가 화면 종목검색 자동완성 (국내주식)
+    // 자산 추가 화면 종목검색 자동완성 (국내주식). 이름 길이 오름차순 랭킹으로
+    // "삼성" 검색 시 삼성전자 같은 본체 상장사가 지주사·자회사·스팩보다 위로
+    // 온다(실제 UX 점검에서 발견해 수정, DomesticStockRepository 주석 참고).
     @GetMapping("/api/domestic-stocks/search")
     public ResponseEntity<List<DomesticStock>> search(@RequestParam String keyword) {
-        return ResponseEntity.ok(domesticStockRepository.findTop20ByNameContainingOrderByNameAsc(keyword));
+        return ResponseEntity.ok(
+                domesticStockRepository.searchByNameOrderByRelevance(keyword, PageRequest.of(0, 20)));
     }
 
     // 초기 적재 / 급한 갱신용 수동 트리거
