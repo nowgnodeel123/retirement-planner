@@ -16,6 +16,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     // phoneHash(결정적 HMAC)로만 조회한다.
     boolean existsByPhoneHash(String phoneHash);
 
+    // 마이페이지 휴대전화번호 변경용 — 자기 자신은 중복 판정에서 제외한다.
+    boolean existsByPhoneHashAndIdNot(String phoneHash, Long id);
+
     Optional<User> findByPhoneHash(String phoneHash);
 
     Optional<User> findByProviderAndProviderId(AuthProvider provider, String providerId);

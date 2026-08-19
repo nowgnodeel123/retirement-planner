@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Entity
 @Table(name = "users")
@@ -57,12 +58,19 @@ public class User {
     @Column(name = "phone_hash", length = 64)
     private String phoneHash;
 
+    // 프론트에 내장된 10종 아이콘 아바타 중 하나를 가리키는 인덱스(0~9). PII가 아니라
+    // 암호화 대상 아님 — 가입 시 무작위 배정, 그 외엔 변경 UI 없음(V12)
+    public static final int AVATAR_COUNT = 10;
+
+    @Column(name = "avatar_id", nullable = false)
+    private Integer avatarId;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Builder
     private User(String email, String password, String nickname, AuthProvider provider, String providerId,
-                 String name, LocalDate birthDate, Gender gender, String phone, String phoneHash) {
+                 String name, LocalDate birthDate, Gender gender, String phone, String phoneHash, Integer avatarId) {
         this.email = email;
         this.password = password;
         this.nickname = nickname;
@@ -73,6 +81,7 @@ public class User {
         this.gender = gender;
         this.phone = phone;
         this.phoneHash = phoneHash;
+        this.avatarId = avatarId;
     }
 
     @PrePersist
@@ -92,6 +101,7 @@ public class User {
                 .gender(gender)
                 .phone(phone)
                 .phoneHash(phoneHash)
+                .avatarId(randomAvatarId())
                 .build();
     }
 
@@ -101,7 +111,12 @@ public class User {
                 .nickname(nickname)
                 .provider(AuthProvider.KAKAO)
                 .providerId(providerId)
+                .avatarId(randomAvatarId())
                 .build();
+    }
+
+    private static int randomAvatarId() {
+        return ThreadLocalRandom.current().nextInt(AVATAR_COUNT);
     }
 
     public void syncKakaoProfile(String nickname) {
@@ -116,5 +131,19 @@ public class User {
     // 비밀번호 재설정(찾기)용. encodedPassword는 호출부(AuthService)에서 이미 인코딩된 값이어야 한다.
     public void updatePassword(String encodedPassword) {
         this.password = encodedPassword;
+    }
+
+    // 마이페이지 개인정보 수정용(이름/생년월일/성별). 카카오 유저도 선택적으로 채울 수 있어
+    // provider로 막지 않는다 — 가입 시 수집(D-121)과 별개로 나중에 직접 입력하는 경로.
+    public void updateProfile(String name, LocalDate birthDate, Gender gender) {
+        this.name = name;
+        this.birthDate = birthDate;
+        this.gender = gender;
+    }
+
+    // 마이페이지 휴대전화번호 변경용. phoneHash는 호출부(UserService)에서 재계산해 넘긴다.
+    public void updatePhone(String phone, String phoneHash) {
+        this.phone = phone;
+        this.phoneHash = phoneHash;
     }
 }
