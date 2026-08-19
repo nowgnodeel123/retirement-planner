@@ -259,6 +259,7 @@ Flyway가 스키마를 자동으로 생성하므로(V1~V4), DB만 비어있는 �
 | `KAKAO_CLIENT_ID` | **필수** — 카카오 REST API 키 | |
 | `KAKAO_CLIENT_SECRET` | (선택) 카카오 클라이언트 시크릿 | |
 | `JWT_SECRET` | **필수** — 32자 이상 임의 문자열 | |
+| `PII_ENCRYPTION_KEY` | **필수** — base64 인코딩된 32바이트(256비트) AES 키(`openssl rand -base64 32`로 생성). users.name/phone/birth_date 암호화에 사용(D-165). **한번 정한 값을 로컬 개발 DB 전체에서 계속 같은 값으로 써야 한다** — 도중에 바꾸면 기존에 암호화된 계정의 이름/전화번호/생년월일을 다시는 복호화할 수 없다(D-171 사고 사례, 데이터 손실은 아니지만 해당 계정의 로그인·계좌조회 등이 전부 깨짐). 팀/세션이 바뀌어도 재사용할 수 있도록 값 하나를 정해 `.idea/workspace.xml` 등 로컬 실행 설정에 고정해둘 것 | |
 | `FRONTEND_CALLBACK_URL` | (선택) 기본값 `http://localhost:3000/auth/callback` | |
 | `DATA_GO_KR_API_KEY` | **필수** — 국내주식 시세/종목마스터 조회 | |
 | `FINNHUB_API_KEY` | **필수** — 해외주식 시세 조회 | |
@@ -268,7 +269,7 @@ Flyway가 스키마를 자동으로 생성하므로(V1~V4), DB만 비어있는 �
 
 IntelliJ 사용 시 Run/Debug Configurations → Environment variables에 필수값을 추가하세요.
 
-> ⚠️ Railway 배포 시 아래 환경변수 등록이 아직 안 되어 있습니다 — 현재 로컬 검증만 완료된 상태입니다: `KAKAO_CLIENT_ID`/`KAKAO_CLIENT_SECRET`/`FRONTEND_CALLBACK_URL`(운영 도메인)/`JWT_SECRET`/`DATA_GO_KR_API_KEY`/`FINNHUB_API_KEY`/`KOREAEXIM_API_KEY`/`DB_URL`·`DB_USERNAME`·`DB_PASSWORD`(Railway Postgres 플러그인 자동 주입 변수명과 매핑 확인 필요). 카카오 개발자 콘솔에도 운영 redirect URI 추가가 필요합니다. `OPENDART_API_KEY`/`SENS_*`는 배포 시점에 함께 등록 예정(D-150/D-152, 코드는 이미 준비됨).
+> ⚠️ Railway 배포 시 아래 환경변수 등록이 아직 안 되어 있습니다 — 현재 로컬 검증만 완료된 상태입니다: `KAKAO_CLIENT_ID`/`KAKAO_CLIENT_SECRET`/`FRONTEND_CALLBACK_URL`(운영 도메인)/`JWT_SECRET`/`DATA_GO_KR_API_KEY`/`FINNHUB_API_KEY`/`KOREAEXIM_API_KEY`/`PII_ENCRYPTION_KEY`/`DB_URL`·`DB_USERNAME`·`DB_PASSWORD`(Railway Postgres 플러그인 자동 주입 변수명과 매핑 확인 필요). 카카오 개발자 콘솔에도 운영 redirect URI 추가가 필요합니다. `OPENDART_API_KEY`/`SENS_*`는 배포 시점에 함께 등록 예정(D-150/D-152, 코드는 이미 준비됨). **`PII_ENCRYPTION_KEY`는 로컬 개발용과 배포용을 반드시 다른 값으로 발급할 것** — 로컬 값을 그대로 운영에 쓰지 말고, 운영은 운영대로 한 번 정하면 바꾸지 않는다(D-171).
 
 ### 3. 실행
 
