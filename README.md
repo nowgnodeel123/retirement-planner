@@ -18,7 +18,7 @@
 
 포트폴리오(자산관리) 탭은 이 역산 계산에 필요한 입력값을 정확하게 채우기 위한 인프라이며, 계좌·매수/매도 거래·배당·시세·환율 연동과 수익/세금 조회를 포함합니다.
 
-개발 6개월 MVP 전 마일스톤(M1~M13)이 완료된 상태이며, 솔로 개발자의 이직 포트폴리오 겸 실사용 앱으로 진행되었습니다.
+개발 6개월 MVP 전 마일스톤(M1~M13)이 완료된 뒤, 2026-08-18부로 목표를 "이직 포트폴리오"에서 **실제 상용 서비스 수익화**로 전환해 금융 정밀도·보안 하드닝(M14), 몬테카를로 시뮬레이션(M16) 등을 이어서 개발하고 있습니다.
 
 <br>
 
@@ -33,6 +33,9 @@
 | 퇴직연금 DB/DC | DB형(최종월급×근속연수), DC형(기존잔액+매년적립 복리) |
 | IRP·연금저축 | 세액공제 한도·구간별 공제율 반영 |
 | 주식/ETF | 양도소득세(22%, 연 250만원 공제) gross-up 인출 |
+| ISA(개인종합자산관리계좌) | 주식/ETF 투자 전체가 ISA 안에 있다고 가정, 은퇴 시점에 누적 이익을 1회 정산(일반형 비과세 200만원·서민형·농어민형 400만원, 초과분 9.9% 분리과세) 후 일반 양도소득세 체계로 전환(신규) |
+| 건강보험 피부양자 자격상실 추정 | 연금 정상 수령 시점(steady state) 기준 공적+사적연금 합산이 연 2,000만원을 넘는지 단순 추정, 확정 판정 아님(M15) |
+| 몬테카를로 시뮬레이션 | 은퇴 후 주식/ETF 수익률만 확률분포(평균 3%, 표준편차 8%)로 대체해 1,000회 반복 — 90세까지 자산이 버틸 확률(P10/P50/P90 잔고 포함, M16) |
 | 연도별 소득 타임라인 | 은퇴~90세까지 1년 단위 소득 구성 (`incomeTimeline`) |
 | 입력값 모순 검증 | 나이 대비 과도한 납입기간 등 필드 간 정합성 체크 |
 
@@ -44,7 +47,9 @@
 | 회원가입 프로필 필드 | 이메일/비밀번호/이름/생년월일/성별/휴대전화(인증) — MVP 스코프보다 넓은 개인정보 수집(D-121, ★핵심) |
 | 휴대전화 인증 | 발송/확인 API. 네이버클라우드 SENS 실제 구현체(`NaverCloudSensSmsSender`)까지 작성 완료, 기본은 여전히 목업(`NoopSmsSender`, 인증번호가 응답에 노출) — 실제 벤더 계약은 서비스 런칭 시점까지 보류(D-149/D-150), 환경변수 4개만 설정하면 즉시 전환 |
 | 아이디 찾기 / 비밀번호 재설정 | 휴대전화 OTP 인증 후 마스킹된 이메일 조회, 이메일+휴대전화 일치 확인 후 재설정(D-133) |
-| JWT 인증 | 액세스 토큰 7일 단일 발급 (리프레시 토큰 미도입 — MVP 단순화, D-081) |
+| JWT 인증 (RTR) | Access 토큰 15분 + Refresh 토큰 14일, 회전(Rotation) 방식 — 재발급마다 새 Refresh 토큰 발급, 재사용 탐지 시 해당 유저의 모든 활성 토큰 즉시 무효화(M14) |
+| 아바타 | 가입 시 서버가 추상 기하 마크 10종 중 무작위 배정(`avatarId`, PII 아님) |
+| 마이페이지 개인정보 수정 | 닉네임/이름/생년월일/성별/휴대전화(재인증)/비밀번호 변경 — 카카오 계정은 비밀번호·개인정보 섹션 숨김 |
 
 ### 포트폴리오 — 계좌·자산·매매·배당
 | 기능 | 설명 |
@@ -54,7 +59,7 @@
 | 매수/매도 등록 | 종목 검색 → 최초 매수로 자산 생성(D-053), 보유 수량 초과 매도 차단(D-057), 기존 보유 자산에 재고 추가 매수 지원 |
 | 카테고리-기관유형 무결성 검증 | 매수 시 계좌 기관유형에 허용된 자산 카테고리인지 서버에서 강제(D-135, ★핵심) — 프론트 필터만으로는 malformed 요청을 막지 못해 증권사 계좌에 암호화폐가 저장되던 버그를 발견해 수정 |
 | 매매 히스토리 조회 | 자산별 거래내역(매수/매도) 최신순 목록 |
-| 배당 추적 | 국내·해외주식 전용(서비스 레벨 강제), 해외주식은 USD+환율 필수 기록, 매매와 통합 히스토리로 표시 |
+| 배당 추적 | 국내·해외주식 전용(서비스 레벨 강제), 해외주식은 USD+환율 필수 기록, 매매와 통합 히스토리로 표시. 배당락일(ex-date)은 선택 입력(수동, 지급일보다 늦으면 400 거부) — 자동조회 인프라는 라이선스 문제로 미노출(아래 참고) |
 
 ### 포트폴리오 대시보드 / 수익 / 세금
 | 기능 | 설명 |
@@ -67,7 +72,7 @@
 | 기능 | 설명 |
 |------|------|
 | 국내주식 시세 | data.go.kr, 전일 종가(D+1) 기준 — 실시간 아님 |
-| 국내주식 종목검색 | KRX 상장종목 로컬 캐시(`domestic_stocks`) + 이름 검색, 주간 자동 갱신 + 관리자 수동 트리거 |
+| 국내주식 종목검색 | KRX 상장종목 로컬 캐시(`domestic_stocks`) + 이름 검색(이름 길이순 우선 정렬로 지주사·자회사보다 본체 상장사가 위로 오도록 근사, D-170), 주간 자동 갱신 + 관리자 수동 트리거 |
 | 해외주식 시세 | Finnhub |
 | 해외주식 종목검색 | Finnhub 심볼 검색(`/api/v1/search`) 프록시, 로컬 캐시 없음(D-139) — 국내주식과 달리 API 자체가 검색을 지원해 캐싱 불필요 |
 | 코인 시세 | Upbit 공개 REST 티커 (키 불요) |
@@ -75,10 +80,18 @@
 | 원화 이중표시 | 해외주식 평가금액·손익만 원화 환산 병기(손익률 자체는 USD 기준 유지, D-087) |
 | 조회 실패 시 처리 | 시세·환율 API 실패해도 화면은 정상 렌더, 조용히 degrade(D-058), 계산·추정·보간하지 않음 |
 
+### 보안 / 인프라 하드닝 (M14)
+| 기능 | 설명 |
+|------|------|
+| 시세 API 서킷브레이커 | Resilience4j — 국내·해외주식·코인 시세 조회 각각에 적용(실패율 50% 이상 시 30초간 open, 이후 반개방 3회 시도) |
+| API 레이트리밋 | Bucket4j 기반 서블릿 필터 — 조회(GET) 계열 분당 60회, 쓰기(POST/PUT/PATCH/DELETE) 계열 분당 30회. 로그인 사용자는 userId, 비로그인은 IP 기준. 초과 시 429 + `Retry-After` |
+| PII 암호화 | `users.name`/`phone`/`birth_date`를 AES-256-GCM으로 암호화 저장(JPA `AttributeConverter`, 호출마다 랜덤 IV). 전화번호 중복 조회는 별도 `phone_hash`(HMAC-SHA256, 결정적) 컬럼으로 수행 |
+| CUD 감사 로그 | 계좌·자산(매수/매도)·배당 생성/수정/삭제를 `@AuditLogging` + AOP로 `audit_logs` 테이블에 기록(요청·응답 스냅샷, IP, 실패 시 로그 없음) |
+
 ### 계정
 | 기능 | 설명 |
 |------|------|
-| 마이페이지 | 닉네임 조회/수정 |
+| 마이페이지 | 닉네임/이름/생년월일/성별/휴대전화/비밀번호 수정, 아바타 표시 |
 
 <br>
 
@@ -105,9 +118,9 @@
 
 <br>
 
-## 🗳 이직 포트폴리오 열람자를 위한 주요 설계 결정
+## 🗳 주요 설계 결정 하이라이트
 
-전체 이력은 워크스페이스 `STATE.md`의 Decision Log(D-001~D-159)에 남아있습니다. 그중 되돌리기 비용이 높거나 이후 결정의 전제가 된 ★핵심 항목만 요약합니다.
+전체 이력은 워크스페이스 `STATE.md`의 Decision Log(D-001~D-177+)에 남아있습니다. 그중 되돌리기 비용이 높거나 이후 결정의 전제가 된 ★핵심 항목만 요약합니다.
 
 - **D-050 — 매매 히스토리 기반 파생값 아키텍처.** 자산의 수량·평단·손익률을 별도 컬럼에 저장하지 않고 `transactions` 테이블에서 조회 시점에 계산합니다. 실제 자산관리 앱의 표준 구조이며, 이후 M6(매매 히스토리)·M10(수익 탭)·M11(세금 탭)이 모두 이 위에서 만들어졌습니다.
 - **D-079 — 개발 착수 순서를 로그인/인증(M1)으로 재배치.** `user_id` 기준으로 테이블을 설계한 뒤 나머지 기능을 얹는 순서로 바꿔, 나중에 소유자 검증을 소급 추가하는 재작업을 방지했습니다. 세션 상한도 마일스톤 수(13개)에 1:1로 맞춰 재산정했습니다.
@@ -117,7 +130,11 @@
 - **D-135 — 프론트 필터만으로는 데이터 무결성을 보장할 수 없다는 걸 실제 오염 데이터로 확인.** 증권사 계좌에 허용되지 않는 암호화폐 자산이 저장돼 있는 걸 로컬 DB에서 발견했습니다. 원인은 카테고리 제한(D-037)이 프론트 UI 단에만 있고 서버에는 없었던 것 — `AssetService.buy()`에 서버사이드 검증을 추가해 malformed 요청으로도 무결성이 깨지지 않도록 막았습니다.
 - **D-140 — "API가 있다"와 "지금 쓸 수 있다"는 다르다는 걸 확인 후 배당 ex-date 자동조회를 보류.** data.go.kr에 배당 정보 API 자체는 실존했지만, 조회 키가 이 프로젝트가 저장해둔 종목코드가 아니라 법인등록번호/회사명뿐이었습니다. 회사명 문자열 매칭으로 우회하면 잘못된 종목의 배당 정보를 연결할 위험이 있어, 안전한 매핑 소스를 확보하기 전까지는 구현하지 않기로 했습니다 — "확정 가능한 데이터만 보여준다"는 원칙(D-058)을 새 기능에도 그대로 적용한 사례입니다.
 - **D-146 — 배당소득세 판정의 세후/세전 불일치 보완.** 국내주식 배당은 저장값 자체가 세후 순액(D-067)이라, 이를 그대로 합산해 금융소득종합과세 2천만원 기준과 비교하면 실제보다 과소산정될 수 있었습니다(R-016). 국내주식 배당에 한해 15.4%(소득세 14%+지방소득세 1.4%, 법정 고정 원천징수율) 역환산 후 합산하도록 수정했습니다.
-- **D-148/D-151/D-154 — 배당 ex-date 자동조회를 코드로는 완성했으나, 데이터 라이선스 문제로 프로덕션에 노출하지 않기로 결정.** D-140에서 보류했던 "종목코드→법인등록번호 매핑 소스 없음" 전제를 OpenDART 기업개황 API로 재조사해 뒤집고(D-148), 실제 매핑 서비스(`OpenDartCorpCodeService`)와 data.go.kr 배당정보 연동(`DividendScheduleService`)까지 구현했습니다(D-154). 그런데 이 data.go.kr 데이터셋이 **공공누리 2유형(출처표시+상업적 이용금지)** 라이선스라는 사실을 확인 — 네스트가 상업 서비스로 전환되면 한국예탁결제원과 별도 계약이 필요합니다. "코드가 완성됐다"와 "출시해도 된다"는 다르다는 걸 보여준 사례로, 관리자 전용 테스트 엔드포인트만 남기고 실사용자 화면에는 연결하지 않았습니다(R-018).
+- **D-148/D-151/D-154/D-167 — 배당 ex-date 자동조회를 코드로는 완성했으나, 데이터 라이선스 문제로 결국 수동입력으로 대체.** D-140에서 보류했던 "종목코드→법인등록번호 매핑 소스 없음" 전제를 OpenDART 기업개황 API로 재조사해 뒤집고(D-148), 실제 매핑 서비스(`OpenDartCorpCodeService`)와 data.go.kr 배당정보 연동(`DividendScheduleService`)까지 구현했습니다(D-154). 그런데 이 data.go.kr 데이터셋이 **공공누리 2유형(출처표시+상업적 이용금지)** 라이선스라는 사실을 확인 — 상업화 목표(D-161) 전환 이후에도 이 문제가 해소되지 않아, 최종적으로 자동조회는 프로덕션에 노출하지 않고 사용자가 직접 입력하는 선택 필드(`ex_dividend_date`, V11)로 대체했습니다(D-167). "코드가 완성됐다"와 "출시해도 된다"는 다르다는 걸 보여준 사례입니다.
+- **D-161 — 프로젝트 목표를 "이직 포트폴리오"에서 "실제 상용 서비스 수익화"로 전환(2026-08-18).** 이 전환을 계기로 M14(RTR·서킷브레이커·레이트리밋·PII 암호화·감사로그)를 진행했습니다. 전환 직후 GitHub에 로컬 흔적 없는 대량 커밋이 유입된 사건(D-160)이 있었고, 되돌린 뒤 유사 제안을 재검토하는 과정에서 세법·연금 수치를 실제로 검증해 실질 오류 1건(건보료 피부양자 판정 계수)을 발견해 반영했습니다.
+- **D-162~D-166 — M14 보안 하드닝 5개 슬라이스.** RTR(Access 15분/Refresh 14일 회전, 재사용 탐지), 시세 API 서킷브레이커+국민연금 A값 정확도 수정, API 레이트리밋(Bucket4j), PII(이름·생년월일·휴대전화) AES-256-GCM 암호화, 계좌/자산/배당 CUD 감사로그. 이 세션에서 그동안 실행이 깨져 있던 `SimulationServiceTest`도 특성화 테스트로 복구해, 이 레포 사상 처음으로 전체 테스트가 그린 상태가 됐습니다.
+- **D-171 — [사고] PII 암호화 마이그레이션 테스트 중 로컬 개발 DB의 실제 계정 14개가 일시적으로 로그인 불가 상태에 빠졌던 사건.** 원인은 테스트에 쓴 임시 암호화 키가 사용자의 실제 IntelliJ 실행 설정 키와 달랐기 때문 — 같은 임시 키로 즉시 복구해 데이터 손실은 없었지만, "로컬이라도 사용자의 영구 개발 DB에 데이터를 변형하는 작업(암호화 마이그레이션 등)을 할 때는 실행에 쓸 키를 미리 사용자와 맞추거나 명시적으로 확인 후 진행한다"는 교훈으로 남겼습니다.
+- **D-169 — M16 몬테카를로 시뮬레이션은 은퇴 후 LIQUID(주식/ETF) 수익률만 확률분포로 대체.** 국민연금·퇴직연금·IRP·연금저축은 이 모델에서 확정 산식이라 그대로 재사용하고, 주식/ETF만 평균 3%·표준편차 8%(보수적 가정, 응답에 항상 노출)로 1,000회 반복합니다. D-157에서 "스코프 과대"로 명시적으로 제외했던 항목이지만, 상용화 목표 전환(D-161) 이후 재요청받아 진행했습니다.
 
 <br>
 
@@ -125,8 +142,9 @@
 
 ### Backend
 - **Java 21** + **Spring Boot 3.4.1**
-- **Spring Security** + **OAuth2 Client** (카카오 로그인), **JJWT** (JWT 발급/검증)
+- **Spring Security** + **OAuth2 Client** (카카오 로그인), **JJWT** (JWT 발급/검증, RTR)
 - **PostgreSQL 16** + **Flyway** (스키마 버전 관리 — `ddl-auto: validate`)
+- **Resilience4j** (시세 API 서킷브레이커), **Bucket4j** (API 레이트리밋, 서블릿 필터 기반)
 - **Gradle**, **Lombok**, **Jakarta Validation**
 
 ### 외부 API
@@ -172,7 +190,7 @@
           (국내주식·종목마스터)     (해외주식·코인 시세)      (환율)
 ```
 
-CORS는 로컬(`localhost:3000`)과 배포된 프론트 도메인만 허용하도록 제한되어 있습니다. `/api/auth/**`, `/oauth2/**`, `/login/**`을 제외한 모든 API는 JWT 인증이 필요합니다(은퇴 시뮬레이터 포함, M13).
+CORS는 로컬(`localhost:3000`)과 배포된 프론트 도메인만 허용하도록 제한되어 있습니다. `/api/auth/**`, `/oauth2/**`, `/login/**`을 제외한 모든 API는 JWT 인증이 필요합니다(은퇴 시뮬레이터 포함, M13). 외부 시세 API(data.go.kr/Finnhub/Upbit) 호출은 각각 서킷브레이커로 보호되고(M14), 모든 API는 레이트리밋 필터를 거칩니다(M14).
 
 <br>
 
@@ -182,33 +200,38 @@ CORS는 로컬(`localhost:3000`)과 배포된 프론트 도메인만 허용하�
 
 ```
 src/main/java/com/nowgnodeel/retirement_planner/
-├── user/                  # User(name/birthDate/gender/phone 포함), Gender enum, AuthProvider + 마이페이지(닉네임 수정)
+├── user/                  # User(name/birthDate/gender/phone/avatarId), Gender enum, AuthProvider
+│   ├── controller/         # UserController — GET /me, PATCH /me/nickname·/me/profile·/me/phone·/me/password (D-177)
+│   └── service/             # UserService
 ├── auth/
-│   ├── controller/        # AuthController(회원가입/로그인/아이디찾기/비번재설정), PhoneVerificationController(인증 발송/확인)
-│   ├── service/           # AuthService, PhoneVerificationService(SmsSender.isEnabled()로 목업/실발송 자동 전환, D-149)
+│   ├── controller/        # AuthController(회원가입/로그인/아이디찾기/비번재설정/refresh/logout), PhoneVerificationController(인증 발송/확인)
+│   ├── service/           # AuthService, RefreshTokenService(RTR 회전+재사용 탐지, M14), PhoneVerificationService(SmsSender.isEnabled()로 목업/실발송 자동 전환, D-149)
+│   ├── entity/              # RefreshToken(tokenHash만 저장, M14)
 │   ├── sms/                # SmsSender 인터페이스, NoopSmsSender(기본, 목업), NaverCloudSensSmsSender(실구현, sms.sens.enabled로 활성화, D-149)
 │   ├── dto/                # AuthDtos, PhoneDtos
 │   └── oauth/              # 카카오 OAuth2 흐름 전용
 ├── asset/
 │   ├── entity/             # Account, Asset, Transaction, Deposit + enum
 │   ├── repository/ · service/ · controller/ · dto/   # AccountService(생성/삭제/이름수정), AssetService(매수/매도/보유조회/거래내역/카테고리-기관유형 검증)
-│   ├── dividend/           # 배당 등록/조회/삭제 (M8) — 국내·해외주식 전용, 해외는 fx 필수
+│   ├── dividend/           # 배당 등록/조회/삭제 (M8) — 국내·해외주식 전용, 해외는 fx 필수, ex_dividend_date 선택 입력(D-167)
 │   ├── dashboard/          # 포트폴리오 전체 집계: summary/insights, 계좌별·종목별 집계 (M9, D-136, entity 없음)
 │   ├── profit/             # 계좌 스코프 실현손익+배당 조회 (M10, entity 없음)
 │   ├── tax/                # 양도소득세 추정 + 배당소득세 판정, 국내주식 배당 세전 역환산(D-146) (M11, entity 없음)
-│   ├── price/              # PriceProvider 구현체 3종 + PriceService (시세 조회 디스패치, M4)
-│   ├── stock/               # 국내주식 종목마스터 캐시+검색, 해외주식 Finnhub 심볼 검색(D-139)
+│   ├── price/              # PriceProvider 구현체 3종(각각 @CircuitBreaker, M14) + PriceService (시세 조회 디스패치, M4)
+│   ├── stock/               # 국내주식 종목마스터 캐시+검색(이름 길이순 정렬, D-170), 해외주식 Finnhub 심볼 검색(D-139)
 │   │                        # + CorpCode 엔티티/OpenDartCorpCodeService(종목코드→법인등록번호, D-151), DividendScheduleService(배당 ex-date, 관리자 전용·미노출, D-154)
 │   └── fx/                  # 환율(한국수출입은행) 연동 (M5) + 일반 사용자용 조회 엔드포인트
 ├── common/
 │   ├── config/             # SecurityConfig, RestClientConfig(대용량 다운로드용 bulkDownloadRestClient 포함, D-151)
-│   ├── security/            # JwtTokenProvider, JwtAuthenticationFilter
-│   └── exception/           # 공통/인증 예외 + 핸들러 (PhoneNotVerifiedException, DuplicatePhoneException 등)
+│   ├── security/            # JwtTokenProvider, JwtAuthenticationFilter, RateLimitFilter(Bucket4j, M14),
+│   │                        # PiiCipher/EncryptedStringConverter/EncryptedLocalDateConverter(AES-256-GCM, M14), PiiMigrationRunner(1회성)
+│   ├── audit/               # @AuditLogging 어노테이션 + AuditLogAspect(AOP) + AuditLog 엔티티 (계좌/자산/배당 CUD, M14)
+│   └── exception/           # 공통/인증 예외 + 핸들러 (PhoneNotVerifiedException, DuplicatePhoneException, RefreshTokenReuseDetectedException 등)
 ├── controller/
 │   ├── SimulationController.java     # 은퇴 시뮬레이터 API 엔드포인트 (M13: 인증 필수)
 │   └── GlobalExceptionHandler.java   # 검증 에러를 필드 단위로 상세화
 ├── service/
-│   └── SimulationService.java        # 3구간 gap-filling 계산 엔진 (여전히 완전 무상태)
+│   └── SimulationService.java        # 3구간 gap-filling 계산 엔진 (여전히 완전 무상태) + ISA 1회 정산 + M15/M16
 ├── dto/
 │   ├── SimulationRequestDto.java
 │   └── SimulationResponseDto.java
@@ -223,7 +246,13 @@ src/main/resources/
     ├── V4__create_exchange_rates_table.sql
     ├── V5__add_signup_profile_fields_to_users.sql   # name/birth_date/gender/phone (D-121)
     ├── V6__add_unique_index_on_users_phone.sql      # phone 부분 유니크 인덱스 (D-135)
-    └── V7__create_corp_codes_table.sql              # 종목코드→법인등록번호 매핑 캐시 (D-151)
+    ├── V7__create_corp_codes_table.sql              # 종목코드→법인등록번호 매핑 캐시 (D-151)
+    ├── V8__create_refresh_tokens_table.sql          # RTR (M14)
+    ├── V9__encrypt_users_pii_columns.sql            # PII 컬럼 확장 + phone_hash + 부분 유니크 인덱스 (M14)
+    ├── V10__create_audit_logs_table.sql             # CUD 감사 로그 (M14)
+    ├── V11__add_ex_dividend_date_to_dividends.sql   # 배당락일 선택 입력 (D-167)
+    ├── V12__add_avatar_id_to_users.sql              # 아바타 배정 (SMALLINT)
+    └── V13__widen_avatar_id_to_integer.sql          # SMALLINT→INTEGER (Hibernate 검증 실패 수정)
 ```
 
 > 은퇴 시뮬레이터(`controller`/`service`/`dto` 최상위 패키지)는 레거시 구조로 남아있습니다. 향후 `retirement` 기능 패키지로 재편 예정(백로그) — 지금 리팩터링하지 않기로 확정된 항목입니다.
@@ -286,16 +315,26 @@ IntelliJ 사용 시 Run/Debug Configurations → Environment variables에 필수
 ### 인증
 
 ```
-POST /api/auth/signup             이메일 회원가입(8필드, D-121) → { accessToken } — 휴대전화 인증 미완료 시 400
-POST /api/auth/login              이메일 로그인   → { accessToken }
+POST /api/auth/signup             이메일 회원가입(8필드, D-121) → { accessToken, refreshToken } — 휴대전화 인증 미완료 시 400
+POST /api/auth/login              이메일 로그인   → { accessToken, refreshToken }
+POST /api/auth/refresh            리프레시 토큰 회전 → 새 { accessToken, refreshToken } — 재사용 탐지 시 해당 유저 전체 토큰 무효화(M14)
+POST /api/auth/logout             리프레시 토큰 폐기 → 204 (존재 여부와 무관하게 조용히 성공)
 POST /api/auth/find-email         휴대전화 OTP 인증 후 마스킹된 이메일 조회 (D-133)
 POST /api/auth/reset-password     이메일+휴대전화 일치 확인 후 비밀번호 재설정 (D-133)
 POST /api/auth/phone/send-code    휴대전화 인증번호 발송 — 목업, 응답에 인증번호 그대로 노출(R-017)
 POST /api/auth/phone/verify-code  휴대전화 인증번호 확인
 GET  /oauth2/authorization/kakao  카카오 로그인 시작 (브라우저 리다이렉트)
+
+GET   /api/users/me               내 정보 조회(닉네임/이메일/이름/생년월일/성별/휴대전화/아바타)
+PATCH /api/users/me/nickname      닉네임 수정
+PATCH /api/users/me/profile       이름/생년월일/성별 수정
+PATCH /api/users/me/phone         휴대전화 수정 — 사전 인증 필요(미인증 시 400), 중복 시 409
+PATCH /api/users/me/password      비밀번호 변경 — 현재 비밀번호 검증(오답 401), 카카오 계정은 거부
 ```
 
-로그인 성공 시 JWT는 `Authorization: Bearer {accessToken}` 헤더로 이후 요청에 실어 보냅니다. 카카오 로그인은 성공 시 프론트 콜백 URL(`?accessToken=...`)로 리다이렉트됩니다. 그 외 모든 엔드포인트는 인증이 필요합니다.
+Access 토큰은 `Authorization: Bearer {accessToken}` 헤더로 이후 요청에 실어 보내며 15분 후 만료됩니다(M14/RTR). 만료 전 `/api/auth/refresh`로 재발급받고, 응답의 새 refreshToken으로 항상 교체 저장해야 합니다(회전 방식이라 기존 refreshToken은 1회용). 카카오 로그인은 성공 시 프론트 콜백 URL(`?accessToken=...`)로 리다이렉트됩니다. 그 외 모든 엔드포인트는 인증이 필요합니다.
+
+**레이트리밋(M14):** 조회(GET) 계열은 분당 60회, 쓰기(POST/PUT/PATCH/DELETE) 계열은 분당 30회로 제한됩니다. 초과 시 `429 Too Many Requests` + `Retry-After` 헤더가 반환됩니다.
 
 ### 계좌 / 자산 / 매매
 
@@ -318,10 +357,12 @@ GET    /api/assets/{assetId}/transactions  자산별 매매 히스토리 (최신
 ### 배당
 
 ```
-POST   /api/assets/{assetId}/dividends              배당 등록 (국내·해외주식만, 해외는 fx 필수)
+POST   /api/assets/{assetId}/dividends              배당 등록 (국내·해외주식만, 해외는 fx 필수, exDividendDate 선택·D-167)
 GET    /api/assets/{assetId}/dividends              배당 목록 조회 (최신순)
 DELETE /api/assets/{assetId}/dividends/{dividendId} 배당 삭제
 ```
+
+`exDividendDate`(배당락일)는 지급일(`payDate`)보다 늦을 수 없으며, 위반 시 400이 반환됩니다.
 
 ### 포트폴리오 대시보드 / 수익 / 세금
 
@@ -370,9 +411,12 @@ Content-Type: application/json
   "targetMonthlyExpense": 300,
   "stockAssetBalance": 5000,
   "stockReturnRate": 0.07,
-  "monthlyStockInvestment": 50
+  "monthlyStockInvestment": 50,
+  "isaType": "NONE"
 }
 ```
+
+`isaType`은 `NONE`(기본) / `GENERAL`(일반형, 비과세 200만원) / `SEOMIN`(서민형·농어민형, 비과세 400만원) 중 하나입니다. 주식/ETF 자산 전체가 이 계좌 안에 있다고 가정하며, 은퇴 시점에 그때까지의 누적 이익을 1회 정산(비과세 한도 초과분 9.9% 분리과세)한 뒤 이후 인출은 일반 양도소득세(22%) 체계로 전환됩니다(신규).
 
 **Response** (핵심 필드만)
 
@@ -392,17 +436,34 @@ Content-Type: application/json
     "retirementPension": 0,
     "stockAsset": 556
   },
+  "dependentStatusWarning": {
+    "atRisk": true,
+    "estimatedAnnualIncome": 11724,
+    "thresholdAnnualIncome": 2000,
+    "message": "추정: 연금을 정상 수령하기 시작하면 ... 국민건강보험공단에 확인하세요."
+  },
+  "monteCarloResult": {
+    "successRatePercent": 57,
+    "p10EndingBalance": 0,
+    "p50EndingBalance": 3200,
+    "p90EndingBalance": 15400,
+    "runs": 1000,
+    "assumedReturnStddev": 0.08
+  },
   "meta": {
     "yearsUntilRetirement": 23,
     "nationalPensionReceiptAge": 65,
-    "lifeExpectancy": 90
+    "lifeExpectancy": 90,
+    "isaType": "NONE"
   },
   "incomeTimeline": [
-    { "age": 51, "nationalAfterTax": 0, "midAfterTax": 0, "liquidWithdrawalAfterTax": 529, "targetExpense": 529 },
-    { "age": 55, "nationalAfterTax": 0, "midAfterTax": 462, "liquidWithdrawalAfterTax": 122, "targetExpense": 584 }
+    { "age": 51, "nationalAfterTax": 0, "retirementPensionAfterTax": 0, "privatePensionAfterTax": 0, "liquidWithdrawalAfterTax": 529, "targetExpense": 529 },
+    { "age": 55, "nationalAfterTax": 0, "retirementPensionAfterTax": 462, "privatePensionAfterTax": 0, "liquidWithdrawalAfterTax": 122, "targetExpense": 584 }
   ]
 }
 ```
+
+`dependentStatusWarning`(M15)은 연금 정상 수령 시점 기준 단순 추정치이며 확정 판정이 아닙니다. `monteCarloResult`(M16)는 `feasible: false`이면 `null`입니다.
 
 `estimatedRetirementAge`가 75세까지도 목표를 채우지 못하면 `feasible: false`가 반환되며, 프론트는 이 값으로 축하 화면 대신 안내 화면을 표시합니다.
 
@@ -453,6 +514,14 @@ DC형: 기존잔액×(1+r)^n + Σ(매년 월급 1개월치 × (1+r)^남은연수
 그 금액이 남도록 매도액을 역산
 ```
 
+### ISA 만기 정산 (은퇴 시점 1회)
+```
+누적이익 = 은퇴시점잔액 − 원금
+과세대상 = max(0, 누적이익 − 비과세한도)  (일반형 200만원 / 서민형·농어민형 400만원)
+세금 = 과세대상 × 9.9%
+정산 후에는 이 시점부터 발생하는 이익만 일반 양도소득세(22%) 대상
+```
+
 ### 실현손익 (수익 탭 / 세금 탭 공통, D-107 / D-109)
 ```
 실현손익 = (매도단가 − 평단) × 매도수량
@@ -472,12 +541,15 @@ DC형: 기존잔액×(1+r)^n + Σ(매년 월급 1개월치 × (1+r)^남은연수
 - 국내주식 시세는 전일 종가(D+1) 기준이며 실시간이 아닙니다.
 - 평균단가는 매도 시 이동평균법으로 재계산하지 않고, 전체 매수 내역 기준을 그대로 유지합니다(MVP 단순화, D-050).
 - 양도소득세·배당소득세 추정 기능은 정식 세무 자문이 아니며, UI에 "세무 전문가 검증 필요" 문구가 상시 노출됩니다. 배당소득세 판정은 국내주식 배당 저장값(세후 순액)을 15.4% 역환산한 세전 기준으로 판정합니다(D-146).
+- ISA 세제 혜택은 은퇴 시점에 그동안의 누적 이익을 1회만 정산하는 방식으로 근사합니다. 실제 ISA는 3~5년 만기마다 정산·재가입이 가능하나, 이 시뮬레이터는 "매년 반복되는 비과세 한도"로 계산하지 않습니다 — 장기 보유·재가입을 반복하는 사용자는 실제 세제 혜택이 이 추정치보다 클 수 있습니다.
+- 건강보험 피부양자 자격상실 추정(M15)은 공적연금+사적연금(둘 다 세전 100% 반영)만 더한 단순 추정치이며, 금융소득·근로소득·사업소득 등 다른 소득원은 반영하지 않습니다. 실제로는 이보다 더 일찍 기준을 넘을 수 있습니다.
+- 몬테카를로 시뮬레이션(M16)의 표준편차(8%)는 은퇴 후 보수적 자산배분을 가정한 모델링 값이며, 실제 포트폴리오의 변동성과 다를 수 있습니다.
 
 <br>
 
 ## 🗓 개발 로드맵
 
-MVP 개발 페이즈 M1~M13이 모두 완료되었습니다.
+MVP 개발 페이즈 M1~M13이 모두 완료된 뒤, 상용화 목표 전환(D-161) 이후 M14~M16이 이어졌습니다.
 
 - [x] **M1** — 카카오 OAuth2 + 이메일 로그인, JWT 인증
 - [x] **M2** — 계좌/자산/거래/배당/입금 데이터 모델 (Flyway V1~V2)
@@ -502,9 +574,19 @@ M13 이후 마일스톤 외 추가 개선(백로그 소진, QA 페이즈 착수 
 - [x] 배당소득세 세후/세전 불일치 보완 — 국내주식 배당 15.4% 역환산(D-146)
 - [x] 매수/매도 폼 완전 재사용 통합(D-147/D-155)
 - [x] SMS 벤더(SENS) 실제 구현체 작성 — 계약은 배포 시점까지 보류(D-149/D-150)
-- [x] 배당 ex-date 종목코드→법인등록번호 매핑(OpenDART) + data.go.kr 실연동 완성 — **라이선스(공공누리 2유형, 상업적 이용금지) 문제로 프로덕션 미노출 확정, 관리자 전용으로만 유지**(D-148/D-151/D-154, R-018)
+- [x] 배당 ex-date 종목코드→법인등록번호 매핑(OpenDART) + data.go.kr 실연동 완성 — 라이선스 문제로 프로덕션 미노출, 관리자 전용으로만 유지(D-148/D-151/D-154)
 - [ ] 국내주식 실시간 시세 확장 — 증권사 API+실계좌 연동 필요, Phase 2 후보(D-141)
-- [ ] Railway 배포 (`KAKAO_CLIENT_ID`/`KAKAO_CLIENT_SECRET`/`FRONTEND_CALLBACK_URL`/`JWT_SECRET`/`DATA_GO_KR_API_KEY`/`FINNHUB_API_KEY`/`KOREAEXIM_API_KEY`/`DB_*` 환경변수 등록 필요)
+
+2026-08-18부로 목표를 "이직 포트폴리오"에서 **실제 상용 서비스 수익화**로 전환(D-161) — 이후 마일스톤:
+- [x] **M14 — 금융 정밀도 + 보안 하드닝.** RTR(Access 15분/Refresh 14일 회전+재사용 탐지), 시세 API 서킷브레이커(Resilience4j)+국민연금 A값 정확도 수정, API 레이트리밋(Bucket4j), PII(이름·생년월일·휴대전화) AES-256-GCM 암호화, 계좌/자산/배당 CUD 감사로그(D-162~D-166)
+- [x] 배당 ex-date 자동조회 최종 종결 — 라이선스 문제로 프로덕션 미노출 확정, 사용자 수동입력(`ex_dividend_date`)으로 대체(D-167)
+- [x] **M15 — 건강보험 피부양자 자격상실 가능성 추정.** 연금 정상 수령 시점 기준 공적+사적연금 합산 추정, 확정 판정 아님을 항상 명시(D-168)
+- [x] **M16 — 몬테카를로 시뮬레이션(1,000회).** 은퇴 후 주식/ETF 수익률만 확률분포로 대체, 90세까지 자산이 버틸 확률(P10/P50/P90) 반환(D-169)
+- [x] 국내주식 검색 랭킹 개선(이름 길이순) + 국내/해외 통합 종목 검색(D-170)
+- [x] [사고 대응] PII 암호화 마이그레이션 키 불일치로 로컬 계정 로그인 불가 발생 → 즉시 복구, 재발 방지 원칙 수립(D-171)
+- [x] 마이페이지 개인정보 수정 화면 신규 — 이름/생년월일/성별/휴대전화(재인증)/비밀번호 변경, 아바타 시스템(D-177)
+- [x] **ISA(개인종합자산관리계좌) 세제 혜택 반영** — 은퇴 시점 1회 정산(비과세 200/400만원 + 초과분 9.9% 분리과세)
+- [ ] Railway 배포 (`KAKAO_CLIENT_ID`/`KAKAO_CLIENT_SECRET`/`FRONTEND_CALLBACK_URL`/`JWT_SECRET`/`DATA_GO_KR_API_KEY`/`FINNHUB_API_KEY`/`KOREAEXIM_API_KEY`/`PII_ENCRYPTION_KEY`/`DB_*` 환경변수 등록 필요)
 
 <br>
 
