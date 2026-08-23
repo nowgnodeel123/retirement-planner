@@ -120,6 +120,7 @@ public class SimulationResponseDto {
         private String pensionType;
         private int militaryServiceMonths;
         private int childrenCount;
+        private String isaType;
     }
 
     /**

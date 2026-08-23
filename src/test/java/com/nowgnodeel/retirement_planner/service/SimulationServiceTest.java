@@ -56,6 +56,7 @@ class SimulationServiceTest {
         assertThat(res.getBreakdown().getRetirementPension()).isEqualTo(696);
         assertThat(res.getMeta().getYearsUntilRetirement()).isEqualTo(39);
         assertThat(res.getIncomeTimeline()).hasSize(21);
+        assertThat(res.getMeta().getIsaType()).isEqualTo("NONE");
     }
 
     @Test
@@ -135,6 +136,46 @@ class SimulationServiceTest {
 
         assertThat(res.getSummary().isFeasible()).isFalse();
         assertThat(res.getMonteCarloResult()).isNull();
+    }
+
+    private SimulationRequestDto requestWithStock(int currentAge, double monthlyIncome, int pensionYearsPaid,
+                                                   double targetMonthlyExpense, double stockAssetBalance,
+                                                   double monthlyStockInvestment, double stockReturnRate,
+                                                   String isaType) {
+        SimulationRequestDto req = request(currentAge, monthlyIncome, pensionYearsPaid, 0.0, 0.0, targetMonthlyExpense);
+        ReflectionTestUtils.setField(req, "stockAssetBalance", stockAssetBalance);
+        ReflectionTestUtils.setField(req, "monthlyStockInvestment", monthlyStockInvestment);
+        ReflectionTestUtils.setField(req, "stockReturnRate", stockReturnRate);
+        ReflectionTestUtils.setField(req, "isaType", isaType);
+        return req;
+    }
+
+    @Test
+    @DisplayName("ISA 일반형 정산으로 은퇴 시점 누적 이익에 붙는 세금이 줄면, 같은 조건에서 은퇴나이가 더 이르거나 최소 같다")
+    void isaSettlement_generalType_neverWorseThanNone() {
+        SimulationRequestDto withoutIsa = requestWithStock(25, 200.0, 0, 250.0, 3000.0, 50.0, 0.08, "NONE");
+        SimulationRequestDto withIsa = requestWithStock(25, 200.0, 0, 250.0, 3000.0, 50.0, 0.08, "GENERAL");
+
+        SimulationResponseDto resWithout = simulationService.calculate(withoutIsa);
+        SimulationResponseDto resWith = simulationService.calculate(withIsa);
+
+        assertThat(resWith.getSummary().getEstimatedRetirementAge())
+                .isLessThanOrEqualTo(resWithout.getSummary().getEstimatedRetirementAge());
+        assertThat(resWith.getMeta().getIsaType()).isEqualTo("GENERAL");
+        assertThat(resWithout.getMeta().getIsaType()).isEqualTo("NONE");
+    }
+
+    @Test
+    @DisplayName("ISA 서민형(비과세 400만원)은 일반형(200만원)보다 세금이 같거나 더 적어, 은퇴나이가 더 이르거나 최소 같다")
+    void isaSettlement_seominType_atLeastAsGoodAsGeneral() {
+        SimulationRequestDto general = requestWithStock(25, 200.0, 0, 250.0, 3000.0, 50.0, 0.08, "GENERAL");
+        SimulationRequestDto seomin = requestWithStock(25, 200.0, 0, 250.0, 3000.0, 50.0, 0.08, "SEOMIN");
+
+        SimulationResponseDto resGeneral = simulationService.calculate(general);
+        SimulationResponseDto resSeomin = simulationService.calculate(seomin);
+
+        assertThat(resSeomin.getSummary().getEstimatedRetirementAge())
+                .isLessThanOrEqualTo(resGeneral.getSummary().getEstimatedRetirementAge());
     }
 
     @Test
