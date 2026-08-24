@@ -73,9 +73,4 @@ public class SimulationRequestDto {
     private boolean usePreciseHealthInsurance = false;
     private Double realEstateValue = 0.0;
     private Double financialAssetValue = 0.0;
-
-    // ISA(개인종합자산관리계좌) 유형. NONE(기본)/GENERAL(일반형, 비과세 200만원)/
-    // SEOMIN(서민형·농어민형, 비과세 400만원). 주식/ETF 자산 전체가 이 계좌 안에
-    // 있다고 가정한다 — 별도 잔액 입력을 받지 않는다(위저드 단순화).
-    private String isaType = "NONE";
 }

@@ -97,15 +97,6 @@ public class SimulationService {
     private static final double STOCK_TAX_RATE = 0.22;
     private static final double STOCK_TAX_EXEMPT = 250.0;
 
-    // ── ISA(개인종합자산관리계좌) ──
-    // WHY: 실제 ISA는 3~5년 만기 후 인출/전환되는 계좌라 "매년 반복되는 비과세
-    // 한도"가 아니다. 은퇴 시점에 그동안의 누적 이익을 1회만 정산(비과세 한도
-    // 초과분 9.9% 분리과세)하는 것으로 근사하고, 정산 후 잔액은 이미 과세가 끝난
-    // 원금으로 간주해 이후 발생하는 이익만 일반 양도소득세(22%) 대상이 되게 한다.
-    private static final double ISA_GENERAL_TAX_EXEMPT = 200.0;
-    private static final double ISA_SEOMIN_TAX_EXEMPT = 400.0;
-    private static final double ISA_SEPARATE_TAX_RATE = 0.099;
-
     private static final String MONTHLY_AMOUNT_SUFFIX = "만원";
 
     @Value("${app.share-url}")
@@ -207,7 +198,6 @@ public class SimulationService {
                         .pensionType(req.getPensionType())
                         .militaryServiceMonths(req.getMilitaryServiceMonths())
                         .childrenCount(req.getChildrenCount())
-                        .isaType(req.getIsaType())
                         .build())
                 .incomeTimeline(timeline)
                 .build();
@@ -333,11 +323,6 @@ public class SimulationService {
                 req.getStockReturnRate(),
                 yearsUntilRetirement);
         double costBasis = req.getStockAssetBalance() + req.getMonthlyStockInvestment() * 12 * yearsUntilRetirement;
-
-        IsaSettlement isaSettlement = settleIsaAtRetirement(liquidAtRetirement, costBasis, req.getIsaType());
-        liquidAtRetirement = isaSettlement.balance();
-        costBasis = isaSettlement.costBasis();
-
         LiquidPortfolio liquid = new LiquidPortfolio(liquidAtRetirement, costBasis);
 
         boolean feasible = true;
@@ -412,29 +397,6 @@ public class SimulationService {
     // ======================================================================
     // LIQUID 자산 캡슐화
     // ======================================================================
-
-    private record IsaSettlement(double balance, double costBasis) {}
-
-    /**
-     * ISA 만기 정산 — 은퇴 시점에 그동안 쌓인 누적 이익을 한 번만 정산한다.
-     * isaType이 NONE이면 아무것도 하지 않고 그대로 반환(회귀 없음). 정산 후
-     * 잔액은 costBasis=balance로 재설정해, 이후 인출에서는 이 시점부터 새로
-     * 발생하는 이익만 일반 양도소득세(22%, 250만원 공제) 대상이 되게 한다.
-     */
-    private IsaSettlement settleIsaAtRetirement(double balance, double costBasis, String isaType) {
-        double exemptLimit = switch (isaType == null ? "NONE" : isaType) {
-            case "GENERAL" -> ISA_GENERAL_TAX_EXEMPT;
-            case "SEOMIN" -> ISA_SEOMIN_TAX_EXEMPT;
-            default -> -1;
-        };
-        if (exemptLimit < 0) return new IsaSettlement(balance, costBasis);
-
-        double gain = Math.max(0, balance - costBasis);
-        double taxableGain = Math.max(0, gain - exemptLimit);
-        double tax = taxableGain * ISA_SEPARATE_TAX_RATE;
-        double netBalance = balance - tax;
-        return new IsaSettlement(netBalance, netBalance);
-    }
 
     /**
      * 주식/ETF 포트폴리오의 잔고·취득원가·양도세 gross-up을 한곳에서 관리한다.
