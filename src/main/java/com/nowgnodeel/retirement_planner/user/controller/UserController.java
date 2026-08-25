@@ -45,6 +45,14 @@ public class UserController {
         return ResponseEntity.ok(userService.updatePhone(userId, request));
     }
 
+    @PatchMapping("/me/email")
+    public ResponseEntity<MeResponse> updateEmail(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody UpdateEmailRequest request
+    ) {
+        return ResponseEntity.ok(userService.updateEmail(userId, request));
+    }
+
     @PatchMapping("/me/password")
     public ResponseEntity<Void> changePassword(
             @AuthenticationPrincipal Long userId,

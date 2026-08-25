@@ -50,7 +50,7 @@ jwt:
   refresh-token-validity-ms: 1209600000  # 14일
 
 app:
-  share-url: https://retirement-planner.vercel.app
+  share-url: ${APP_SHARE_URL:https://retirement-planner.vercel.app}
   frontend-callback-url: ${FRONTEND_CALLBACK_URL:http://localhost:3000/auth/callback}
   national-pension:
     # 2025.12~2026.11 적용 실제 값(319.3511만원, 국민연금공단) — 기존 319.35는 근사치였음(M14 세법 검증 계기 수정)

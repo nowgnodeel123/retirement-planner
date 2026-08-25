@@ -146,4 +146,10 @@ public class User {
         this.phone = phone;
         this.phoneHash = phoneHash;
     }
+
+    // 마이페이지 이메일(로그인 아이디) 변경용. LOCAL 계정 전용 — 호출부(UserService)에서
+    // provider 확인·현재 비밀번호 검증·중복 확인을 마친 뒤에만 호출한다.
+    public void updateEmail(String email) {
+        this.email = email;
+    }
 }

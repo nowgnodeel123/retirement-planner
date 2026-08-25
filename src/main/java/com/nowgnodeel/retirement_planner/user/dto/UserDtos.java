@@ -2,6 +2,7 @@ package com.nowgnodeel.retirement_planner.user.dto;
 
 import com.nowgnodeel.retirement_planner.user.entity.Gender;
 import com.nowgnodeel.retirement_planner.user.entity.User;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
@@ -27,6 +28,13 @@ public class UserDtos {
     // 휴대전화번호 변경 — 요청 전 /api/auth/phone/verify-code로 이 번호를 먼저 인증해둬야 한다.
     public record UpdatePhoneRequest(
             @NotBlank @Pattern(regexp = "^01[0-9]{8,9}$", message = "올바른 휴대전화번호 형식이 아닙니다") String phone
+    ) {}
+
+    // 이메일(로그인 아이디) 변경 — LOCAL 계정 전용. 이메일 자체를 인증할 수단이 없어(이
+    // 프로젝트엔 이메일 인증 발송 인프라가 없음), 최소한의 본인확인으로 현재 비밀번호를 요구한다.
+    public record UpdateEmailRequest(
+            @NotBlank @Email String email,
+            @NotBlank String currentPassword
     ) {}
 
     public record ChangePasswordRequest(

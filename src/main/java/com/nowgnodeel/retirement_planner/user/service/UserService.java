@@ -1,6 +1,7 @@
 package com.nowgnodeel.retirement_planner.user.service;
 
 import com.nowgnodeel.retirement_planner.auth.service.PhoneVerificationService;
+import com.nowgnodeel.retirement_planner.common.exception.DuplicateEmailException;
 import com.nowgnodeel.retirement_planner.common.exception.DuplicatePhoneException;
 import com.nowgnodeel.retirement_planner.common.exception.InvalidCurrentPasswordException;
 import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
@@ -57,6 +58,22 @@ public class UserService {
         }
         user.updatePhone(request.phone(), phoneHash);
         phoneVerificationService.consume(request.phone());
+        return MeResponse.from(user);
+    }
+
+    @Transactional
+    public MeResponse updateEmail(Long userId, UpdateEmailRequest request) {
+        User user = findUser(userId);
+        if (user.getProvider() != AuthProvider.LOCAL) {
+            throw new IllegalArgumentException("카카오 로그인 계정은 이메일을 변경할 수 없어요.");
+        }
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            throw new InvalidCurrentPasswordException();
+        }
+        if (!request.email().equals(user.getEmail()) && userRepository.existsByEmail(request.email())) {
+            throw new DuplicateEmailException();
+        }
+        user.updateEmail(request.email());
         return MeResponse.from(user);
     }
 
