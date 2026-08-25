@@ -41,6 +41,11 @@ public class AssetService {
             throw new IllegalArgumentException("해당 계좌 유형에서는 등록할 수 없는 자산 카테고리입니다.");
         }
 
+        if (account.getDetailType() == AccountDetailType.IRP
+                || account.getDetailType() == AccountDetailType.PENSION_SAVINGS) {
+            throw new IllegalArgumentException("연금저축·IRP 계좌는 지정 상품만 거래할 수 있어 개별 매수 등록을 지원하지 않습니다.");
+        }
+
         if (request.category() == AssetCategory.FOREIGN_STOCK && request.fx() == null) {
             throw new IllegalArgumentException("해외주식은 환율(fx) 값이 필요합니다.");
         }
