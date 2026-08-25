@@ -58,7 +58,7 @@
 | 거래기록 기반 자산 | 국내·해외주식/암호화폐는 수량·평단·손익을 직접 저장하지 않고, 매매 히스토리(`transactions`)에서 조회 시점에 파생 계산 (D-050, ★핵심) |
 | 매수/매도 등록 | 종목 검색 → 최초 매수로 자산 생성(D-053), 보유 수량 초과 매도 차단(D-057), 기존 보유 자산에 재고 추가 매수 지원 |
 | 카테고리-기관유형 무결성 검증 | 매수 시 계좌 기관유형에 허용된 자산 카테고리인지 서버에서 강제(D-135, ★핵심) — 프론트 필터만으로는 malformed 요청을 막지 못해 증권사 계좌에 암호화폐가 저장되던 버그를 발견해 수정 |
-| 연금저축·IRP 개별 매수 차단 | 연금저축·IRP 계좌는 지정 상품만 거래 가능해 개별 국내·해외주식 매수 자체가 안 되는데, 이 검증이 전혀 없었음 — `AssetService.buy()`에서 계좌 `detailType`이 IRP/PENSION_SAVINGS면 400 거부(D-190, ★핵심). 실제 로컬 DB에서 연금저축 계좌에 매수·매도된 개별주(해외주식) 이력을 발견해 문제를 확인했으며, ETF/펀드 여부를 구분할 데이터가 없어 "개별주만 차단"은 못 하고 두 계좌 유형 모두 매수 자체를 막기로 확정 |
+| 연금저축·IRP 개별 매수 차단 | 연금저축·IRP 계좌는 지정 상품만 거래 가능해 개별 국내·해외주식 매수 자체가 안 되는데, 이 검증이 전혀 없었음 — `AssetService.buy()`에서 계좌 `detailType`이 IRP/PENSION_SAVINGS면 400 거부(D-198, ★핵심). 실제 로컬 DB에서 연금저축 계좌에 매수·매도된 개별주(해외주식) 이력을 발견해 문제를 확인했으며, ETF/펀드 여부를 구분할 데이터가 없어 "개별주만 차단"은 못 하고 두 계좌 유형 모두 매수 자체를 막기로 확정 |
 | 매매 히스토리 조회 | 자산별 거래내역(매수/매도) 최신순 목록 |
 | 배당 추적 | 국내·해외주식 전용(서비스 레벨 강제), 해외주식은 USD+환율 필수 기록, 매매와 통합 히스토리로 표시. 배당락일(ex-date)은 선택 입력(수동, 지급일보다 늦으면 400 거부) — 자동조회 인프라는 라이선스 문제로 미노출(아래 참고) |
 
@@ -77,7 +77,7 @@
 | 해외주식 시세 | Finnhub |
 | 해외주식 종목검색 | Finnhub 심볼 검색(`/api/v1/search`) 프록시, 로컬 캐시 없음(D-139) — 국내주식과 달리 API 자체가 검색을 지원해 캐싱 불필요 |
 | 코인 시세 | Upbit 공개 REST 티커 (키 불요) |
-| 코인 종목검색 | Upbit `/v1/market/all`(KRW마켓만) 프록시, 목록 자체를 5분 메모리 캐싱 후 이름/심볼 매칭은 매 요청 수행(D-189) — 해외주식과 달리 Upbit는 검색 엔드포인트가 없어 전체 목록을 캐싱해두는 방식 |
+| 코인 종목검색 | Upbit `/v1/market/all`(KRW마켓만) 프록시, 목록 자체를 5분 메모리 캐싱 후 이름/심볼 매칭은 매 요청 수행(D-197) — 해외주식과 달리 Upbit는 검색 엔드포인트가 없어 전체 목록을 캐싱해두는 방식 |
 | 환율(USD/KRW) | 한국수출입은행 오픈API, 매매기준율 캐시 + 영업일 11:30(KST) 자동 갱신 + 관리자 수동 트리거. 일반 인증 사용자용 조회 엔드포인트 별도 제공 |
 | 원화 이중표시 | 해외주식 평가금액·손익만 원화 환산 병기(손익률 자체는 USD 기준 유지, D-087) |
 | 조회 실패 시 처리 | 시세·환율 API 실패해도 화면은 정상 렌더, 조용히 degrade(D-058), 계산·추정·보간하지 않음 |
@@ -137,7 +137,8 @@
 - **D-162~D-166 — M14 보안 하드닝 5개 슬라이스.** RTR(Access 15분/Refresh 14일 회전, 재사용 탐지), 시세 API 서킷브레이커+국민연금 A값 정확도 수정, API 레이트리밋(Bucket4j), PII(이름·생년월일·휴대전화) AES-256-GCM 암호화, 계좌/자산/배당 CUD 감사로그. 이 세션에서 그동안 실행이 깨져 있던 `SimulationServiceTest`도 특성화 테스트로 복구해, 이 레포 사상 처음으로 전체 테스트가 그린 상태가 됐습니다.
 - **D-171 — [사고] PII 암호화 마이그레이션 테스트 중 로컬 개발 DB의 실제 계정 14개가 일시적으로 로그인 불가 상태에 빠졌던 사건.** 원인은 테스트에 쓴 임시 암호화 키가 사용자의 실제 IntelliJ 실행 설정 키와 달랐기 때문 — 같은 임시 키로 즉시 복구해 데이터 손실은 없었지만, "로컬이라도 사용자의 영구 개발 DB에 데이터를 변형하는 작업(암호화 마이그레이션 등)을 할 때는 실행에 쓸 키를 미리 사용자와 맞추거나 명시적으로 확인 후 진행한다"는 교훈으로 남겼습니다.
 - **D-169 — M16 몬테카를로 시뮬레이션은 은퇴 후 LIQUID(주식/ETF) 수익률만 확률분포로 대체.** 국민연금·퇴직연금·IRP·연금저축은 이 모델에서 확정 산식이라 그대로 재사용하고, 주식/ETF만 평균 3%·표준편차 8%(보수적 가정, 응답에 항상 노출)로 1,000회 반복합니다. D-157에서 "스코프 과대"로 명시적으로 제외했던 항목이지만, 상용화 목표 전환(D-161) 이후 재요청받아 진행했습니다.
-- **D-190 — 연금저축·IRP 계좌의 개별 매수를 실제 데이터로 확인 후 서버에서 원천 차단.** 프론트 UX 재검토 세션 중 로컬 DB의 실제 연금저축 계좌에 해외 개별주(애플) 매수·전량매도 이력이 남아있는 걸 발견했습니다 — 연금저축·IRP는 실제로는 지정 상품(ETF·펀드 등)만 거래 가능해 개별주 매수 자체가 안 되는데, 이 프로젝트는 D-135(카테고리-기관유형 검증)까지만 서버에서 강제하고 `detailType`(연금저축/IRP/ISA/일반) 기준 제약은 전혀 없었던 게 원인이었습니다. 지금 `domestic_stocks` 캐시엔 ETF/펀드 여부를 구분할 컬럼이 없어 "개별주만 막고 ETF는 허용" 같은 정교한 제한은 데이터상 불가능하다는 걸 사용자에게 먼저 알리고, 두 계좌 유형 모두 매수 자체를 막는 쪽으로 확정했습니다(`AssetService.buy()`, ★핵심). D-135와 마찬가지로 "프론트만 막으면 malformed 요청에 뚫린다"는 원칙을 재확인한 사례이며, API를 직접 호출하는 우회 시도로 400 거부를 실제 검증했습니다.
+- **D-196 — 회원탈퇴 API 신규.** MY 탭의 "계정" 섹션이 로그아웃(≡ 메뉴로 이동)에서 회원탈퇴로 바뀌면서, `DELETE /api/users/me`를 신규 구현했습니다. LOCAL 계정은 현재 비밀번호 재확인, 카카오 계정은 확인 문구만으로 진행됩니다. FK 순서(accounts/refresh_tokens 모두 `users.id`를 ON DELETE CASCADE 없이 참조, V2/V8)를 지켜 refresh_tokens → accounts(assets/transactions/dividends/deposits는 여기서부터 DB cascade로 전파) → users 순으로 즉시 하드 삭제하며, 유예 기간·소프트 삭제는 MVP 단순화로 두지 않았습니다.
+- **D-198 — 연금저축·IRP 계좌의 개별 매수를 실제 데이터로 확인 후 서버에서 원천 차단.** 프론트 UX 재검토 세션 중 로컬 DB의 실제 연금저축 계좌에 해외 개별주(애플) 매수·전량매도 이력이 남아있는 걸 발견했습니다 — 연금저축·IRP는 실제로는 지정 상품(ETF·펀드 등)만 거래 가능해 개별주 매수 자체가 안 되는데, 이 프로젝트는 D-135(카테고리-기관유형 검증)까지만 서버에서 강제하고 `detailType`(연금저축/IRP/ISA/일반) 기준 제약은 전혀 없었던 게 원인이었습니다. 지금 `domestic_stocks` 캐시엔 ETF/펀드 여부를 구분할 컬럼이 없어 "개별주만 막고 ETF는 허용" 같은 정교한 제한은 데이터상 불가능하다는 걸 사용자에게 먼저 알리고, 두 계좌 유형 모두 매수 자체를 막는 쪽으로 확정했습니다(`AssetService.buy()`, ★핵심). D-135와 마찬가지로 "프론트만 막으면 malformed 요청에 뚫린다"는 원칙을 재확인한 사례이며, API를 직접 호출하는 우회 시도로 400 거부를 실제 검증했습니다.
 
 <br>
 
@@ -153,7 +154,7 @@
 ### 외부 API
 - **data.go.kr** — 국내주식 시세(D+1), KRX 상장종목 정보(종목검색 캐시용), 배당 ex-date(개발단계 전용, 아래 참고)
 - **Finnhub** — 해외주식 시세, 심볼 검색
-- **Upbit 공개 REST** — 코인 시세 + KRW마켓 목록(종목검색용, D-189) (키 불요)
+- **Upbit 공개 REST** — 코인 시세 + KRW마켓 목록(종목검색용, D-197) (키 불요)
 - **한국수출입은행 오픈API** — USD/KRW 매매기준율
 - **OpenDART(금융감독원 전자공시)** — 종목코드→법인등록번호 매핑(`corp_codes` 캐시). 배당 ex-date 매핑용 인프라, 관리자 전용(D-148/D-151)
 - **네이버클라우드 SENS** — 휴대전화 인증 SMS 발송(코드 준비 완료, 계약은 배포 시점까지 보류(D-149/D-150))
@@ -204,7 +205,7 @@ CORS는 로컬(`localhost:3000`)과 배포된 프론트 도메인만 허용하�
 ```
 src/main/java/com/nowgnodeel/retirement_planner/
 ├── user/                  # User(name/birthDate/gender/phone/avatarId), Gender enum, AuthProvider
-│   ├── controller/         # UserController — GET /me, PATCH /me/nickname·/me/profile·/me/phone·/me/password (D-177), DELETE /me(회원탈퇴, D-190)
+│   ├── controller/         # UserController — GET /me, PATCH /me/nickname·/me/profile·/me/phone·/me/password (D-177), DELETE /me(회원탈퇴, D-196)
 │   └── service/             # UserService
 ├── auth/
 │   ├── controller/        # AuthController(회원가입/로그인/아이디찾기/비번재설정/refresh/logout), PhoneVerificationController(인증 발송/확인)
@@ -215,7 +216,7 @@ src/main/java/com/nowgnodeel/retirement_planner/
 │   └── oauth/              # 카카오 OAuth2 흐름 전용
 ├── asset/
 │   ├── entity/             # Account, Asset, Transaction, Deposit + enum
-│   ├── repository/ · service/ · controller/ · dto/   # AccountService(생성/삭제/이름수정), AssetService(매수/매도/보유조회/거래내역/카테고리-기관유형 검증/연금저축·IRP 매수 차단, D-190)
+│   ├── repository/ · service/ · controller/ · dto/   # AccountService(생성/삭제/이름수정), AssetService(매수/매도/보유조회/거래내역/카테고리-기관유형 검증/연금저축·IRP 매수 차단, D-198)
 │   ├── dividend/           # 배당 등록/조회/삭제 (M8) — 국내·해외주식 전용, 해외는 fx 필수, ex_dividend_date 선택 입력(D-167)
 │   ├── dashboard/          # 포트폴리오 전체 집계: summary/insights, 계좌별·종목별 집계 (M9, D-136, entity 없음)
 │   ├── profit/             # 계좌 스코프 실현손익+배당 조회 (M10, entity 없음)
@@ -223,7 +224,7 @@ src/main/java/com/nowgnodeel/retirement_planner/
 │   ├── price/              # PriceProvider 구현체 3종(각각 @CircuitBreaker, M14) + PriceService (시세 조회 디스패치, M4)
 │   ├── stock/               # 국내주식 종목마스터 캐시+검색(이름 길이순 정렬, D-170), 해외주식 Finnhub 심볼 검색(D-139)
 │   │                        # + CorpCode 엔티티/OpenDartCorpCodeService(종목코드→법인등록번호, D-151), DividendScheduleService(배당 ex-date, 관리자 전용·미노출, D-154)
-│   ├── crypto/              # CryptoSearchService(Upbit market/all 5분 캐싱+이름/심볼 매칭) + CryptoController (D-189, entity 없음)
+│   ├── crypto/              # CryptoSearchService(Upbit market/all 5분 캐싱+이름/심볼 매칭) + CryptoController (D-197, entity 없음)
 │   └── fx/                  # 환율(한국수출입은행) 연동 (M5) + 일반 사용자용 조회 엔드포인트
 ├── common/
 │   ├── config/             # SecurityConfig, RestClientConfig(대용량 다운로드용 bulkDownloadRestClient 포함, D-151)
@@ -334,7 +335,7 @@ PATCH  /api/users/me/nickname      닉네임 수정
 PATCH  /api/users/me/profile       이름/생년월일/성별 수정
 PATCH  /api/users/me/phone         휴대전화 수정 — 사전 인증 필요(미인증 시 400), 중복 시 409
 PATCH  /api/users/me/password      비밀번호 변경 — 현재 비밀번호 검증(오답 401), 카카오 계정은 거부
-DELETE /api/users/me               회원탈퇴 — LOCAL은 body에 currentPassword 필요(오답/누락 400), 카카오는 확인만(D-190). 즉시 하드 삭제: refresh_tokens → accounts(DB ON DELETE CASCADE로 assets/transactions/dividends/deposits까지 전파) → users 순서로 삭제
+DELETE /api/users/me               회원탈퇴 — LOCAL은 body에 currentPassword 필요(오답/누락 400), 카카오는 확인만(D-196). 즉시 하드 삭제: refresh_tokens → accounts(DB ON DELETE CASCADE로 assets/transactions/dividends/deposits까지 전파) → users 순서로 삭제
 ```
 
 Access 토큰은 `Authorization: Bearer {accessToken}` 헤더로 이후 요청에 실어 보내며 15분 후 만료됩니다(M14/RTR). 만료 전 `/api/auth/refresh`로 재발급받고, 응답의 새 refreshToken으로 항상 교체 저장해야 합니다(회전 방식이라 기존 refreshToken은 1회용). 카카오 로그인은 성공 시 프론트 콜백 URL(`?accessToken=...`)로 리다이렉트됩니다. 그 외 모든 엔드포인트는 인증이 필요합니다.
@@ -358,7 +359,7 @@ GET    /api/assets/{assetId}/transactions  자산별 매매 히스토리 (최신
 **BuyRequest / SellRequest 공통 규칙**
 - `FOREIGN_STOCK`은 `fx`(거래 시점 환율) 필수, 그 외 카테고리는 무시
 - `tradeDate`는 오늘보다 미래일 수 없음(D-061)
-- 계좌 `detailType`이 `IRP`/`PENSION_SAVINGS`면 카테고리와 무관하게 매수 자체가 400으로 거부됨(D-190, ★핵심) — 지정 상품만 거래 가능한 계좌라 개별 국내·해외주식 매수를 원천 차단
+- 계좌 `detailType`이 `IRP`/`PENSION_SAVINGS`면 카테고리와 무관하게 매수 자체가 400으로 거부됨(D-198, ★핵심) — 지정 상품만 거래 가능한 계좌라 개별 국내·해외주식 매수를 원천 차단
 
 ### 배당
 
@@ -384,7 +385,7 @@ GET /api/accounts/{accountId}/tax?year=    양도소득세 추정(해외주식�
 ```
 GET  /api/domestic-stocks/search?keyword={q}         국내주식 종목검색(로컬 캐시, 상위 20건)
 GET  /api/foreign-stocks/search?keyword={q}           해외주식 종목검색(Finnhub 프록시, 상위 20건, D-139)
-GET  /api/crypto/search?keyword={q}                    코인 종목검색(Upbit KRW마켓 목록 5분 캐싱, 상위 20건, D-189)
+GET  /api/crypto/search?keyword={q}                    코인 종목검색(Upbit KRW마켓 목록 5분 캐싱, 상위 20건, D-197)
 GET  /api/exchange-rates/{currency}                    최근 매매기준율 조회(일반 사용자용, 읽기 전용)
 POST /api/admin/domestic-stocks/refresh               국내주식 종목마스터 수동 갱신
 POST /api/admin/exchange-rates/refresh                환율 수동 갱신
@@ -595,9 +596,9 @@ M13 이후 마일스톤 외 추가 개선(백로그 소진, QA 페이즈 착수 
 - [x] **ISA(개인종합자산관리계좌) 세제 혜택 반영** — 은퇴 시점 1회 정산(비과세 200/400만원 + 초과분 9.9% 분리과세)
 
 같은 흐름, 사용자 UI 재검토 요청으로 진행한 애드혹 개선:
-- [x] 코인 종목검색 신규(`asset/crypto`, `GET /api/crypto/search`) — Upbit `/v1/market/all` KRW마켓 목록 5분 캐싱, 국내·해외주식과 동일하게 이름 검색으로 통일(D-189)
-- [x] **회원탈퇴 API 신규(`DELETE /api/users/me`, ★핵심)** — LOCAL은 현재 비밀번호 재확인, 카카오는 확인만. refresh_tokens→accounts(DB cascade)→users 순서로 즉시 하드 삭제
-- [x] **연금저축·IRP 계좌 개별 매수 차단(`AssetService.buy()`, ★핵심, D-190)** — 실제 로컬 DB에서 연금저축 계좌에 매수된 개별 해외주식 이력을 발견해 문제를 확인, 계좌 `detailType` 검증 추가. ETF/펀드 구분 데이터가 없어 두 계좌 유형 모두 매수 자체를 차단하는 쪽으로 확정
+- [x] 코인 종목검색 신규(`asset/crypto`, `GET /api/crypto/search`) — Upbit `/v1/market/all` KRW마켓 목록 5분 캐싱, 국내·해외주식과 동일하게 이름 검색으로 통일(D-197)
+- [x] **회원탈퇴 API 신규(`DELETE /api/users/me`, ★핵심, D-196)** — LOCAL은 현재 비밀번호 재확인, 카카오는 확인만. refresh_tokens→accounts(DB cascade)→users 순서로 즉시 하드 삭제
+- [x] **연금저축·IRP 계좌 개별 매수 차단(`AssetService.buy()`, ★핵심, D-198)** — 실제 로컬 DB에서 연금저축 계좌에 매수된 개별 해외주식 이력을 발견해 문제를 확인, 계좌 `detailType` 검증 추가. ETF/펀드 구분 데이터가 없어 두 계좌 유형 모두 매수 자체를 차단하는 쪽으로 확정
 - [ ] Railway 배포 (`KAKAO_CLIENT_ID`/`KAKAO_CLIENT_SECRET`/`FRONTEND_CALLBACK_URL`/`JWT_SECRET`/`DATA_GO_KR_API_KEY`/`FINNHUB_API_KEY`/`KOREAEXIM_API_KEY`/`PII_ENCRYPTION_KEY`/`DB_*` 환경변수 등록 필요)
 
 <br>
