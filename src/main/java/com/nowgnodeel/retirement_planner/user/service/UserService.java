@@ -1,6 +1,10 @@
 package com.nowgnodeel.retirement_planner.user.service;
 
+import com.nowgnodeel.retirement_planner.asset.repository.AccountRepository;
+import com.nowgnodeel.retirement_planner.auth.repository.RefreshTokenRepository;
 import com.nowgnodeel.retirement_planner.auth.service.PhoneVerificationService;
+import com.nowgnodeel.retirement_planner.common.audit.AuditAction;
+import com.nowgnodeel.retirement_planner.common.audit.AuditLogging;
 import com.nowgnodeel.retirement_planner.common.exception.DuplicateEmailException;
 import com.nowgnodeel.retirement_planner.common.exception.DuplicatePhoneException;
 import com.nowgnodeel.retirement_planner.common.exception.InvalidCurrentPasswordException;
@@ -26,6 +30,8 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final PhoneVerificationService phoneVerificationService;
     private final PiiCipher piiCipher;
+    private final AccountRepository accountRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
 
     public MeResponse getMe(Long userId) {
         User user = findUser(userId);
@@ -87,6 +93,25 @@ public class UserService {
             throw new InvalidCurrentPasswordException();
         }
         user.updatePassword(passwordEncoder.encode(request.newPassword()));
+    }
+
+    // 회원탈퇴 — 즉시 하드 삭제(유예 기간·소프트 삭제 없음, MVP 단순화). FK 순서 주의:
+    // accounts.user_id/refresh_tokens.user_id 모두 ON DELETE CASCADE가 아니라서(V2/V8)
+    // user row를 지우기 전에 먼저 지워야 한다. accounts 삭제는 assets→transactions/
+    // dividends/deposits까지 DB의 ON DELETE CASCADE(V2)로 자동 전파된다.
+    @Transactional
+    @AuditLogging(action = AuditAction.DELETE, entityType = "User")
+    public void withdraw(Long userId, WithdrawRequest request) {
+        User user = findUser(userId);
+        if (user.getProvider() == AuthProvider.LOCAL) {
+            if (request.currentPassword() == null
+                    || !passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+                throw new InvalidCurrentPasswordException();
+            }
+        }
+        refreshTokenRepository.deleteAllByUserId(userId);
+        accountRepository.deleteAll(accountRepository.findAllByUserId(userId));
+        userRepository.delete(user);
     }
 
     private User findUser(Long userId) {

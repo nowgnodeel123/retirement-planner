@@ -42,6 +42,12 @@ public class UserDtos {
             @NotBlank @Size(min = 8, max = 64) String newPassword
     ) {}
 
+    // 회원탈퇴 — LOCAL 계정만 currentPassword를 검증(카카오 계정은 비밀번호가 없어 null 허용).
+    // 검증 어노테이션을 붙이지 않는다: provider별로 필수 여부가 갈려 서비스 계층에서 판단한다.
+    public record WithdrawRequest(
+            String currentPassword
+    ) {}
+
     public record MeResponse(
             Long id,
             String email,

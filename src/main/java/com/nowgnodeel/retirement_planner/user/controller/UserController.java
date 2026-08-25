@@ -61,4 +61,13 @@ public class UserController {
         userService.changePassword(userId, request);
         return ResponseEntity.noContent().build();
     }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> withdraw(
+            @AuthenticationPrincipal Long userId,
+            @RequestBody WithdrawRequest request
+    ) {
+        userService.withdraw(userId, request);
+        return ResponseEntity.noContent().build();
+    }
 }
