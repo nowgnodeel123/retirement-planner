@@ -6,6 +6,8 @@ import com.nowgnodeel.retirement_planner.asset.fx.entity.ExchangeRate;
 import com.nowgnodeel.retirement_planner.asset.fx.service.ExchangeRateService;
 import com.nowgnodeel.retirement_planner.asset.price.PriceService;
 import com.nowgnodeel.retirement_planner.asset.repository.*;
+import com.nowgnodeel.retirement_planner.asset.stock.entity.DomesticStock;
+import com.nowgnodeel.retirement_planner.asset.stock.repository.DomesticStockRepository;
 import com.nowgnodeel.retirement_planner.common.audit.AuditAction;
 import com.nowgnodeel.retirement_planner.common.audit.AuditLogging;
 import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
@@ -15,7 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.Optional;
 
 import static com.nowgnodeel.retirement_planner.asset.dto.AssetDtos.*;
@@ -30,6 +35,7 @@ public class AssetService {
     private final AccountRepository accountRepository;
     private final PriceService priceService;
     private final ExchangeRateService exchangeRateService;
+    private final DomesticStockRepository domesticStockRepository;
 
     @Transactional
     @AuditLogging(action = AuditAction.CREATE, entityType = "Transaction(BUY)")
@@ -41,9 +47,16 @@ public class AssetService {
             throw new IllegalArgumentException("해당 계좌 유형에서는 등록할 수 없는 자산 카테고리입니다.");
         }
 
+        // D-198: 연금저축·IRP는 세제혜택 계좌라 "지정 상품만 거래 가능"하다.
+        // 원래 의도는 개별주 차단이었는데 구현이 매수 자체를 전부 막고 있었다 —
+        // 실제로 이 계좌들에서 담는 ETF(KODEX 미국나스닥100 등)는 허용해야 맞다.
         if (account.getDetailType() == AccountDetailType.IRP
                 || account.getDetailType() == AccountDetailType.PENSION_SAVINGS) {
-            throw new IllegalArgumentException("연금저축·IRP 계좌는 지정 상품만 거래할 수 있어 개별 매수 등록을 지원하지 않습니다.");
+            if (request.category() != AssetCategory.DOMESTIC_STOCK
+                    || !isEtf(request.symbol())) {
+                throw new IllegalArgumentException(
+                        "연금저축·IRP 계좌에서는 ETF만 매수할 수 있어요. 개별 종목·해외주식·암호화폐는 담을 수 없습니다.");
+            }
         }
 
         if (request.category() == AssetCategory.FOREIGN_STOCK && request.fx() == null) {
@@ -105,6 +118,174 @@ public class AssetService {
                 .build();
         transactionRepository.save(tx);
 
+        return toHoldingResponse(asset);
+    }
+
+    /**
+     * M6 후속: 잘못 입력한 매매 거래의 정정. 수량·단가·환율·거래일만 바꾼다(type은 불변).
+     * D-050 그대로 — 수량·평단·손익은 저장돼 있지 않고 transactions에서 파생되므로,
+     * 거래 한 건을 고치면 보유수량·평단·실현손익·세금 추정이 전부 자동으로 따라온다.
+     * D-057 연장: 정정 결과 보유수량이 음수가 되면(매수를 줄였는데 이미 그만큼 매도했다면) 거부한다.
+     */
+    @Transactional
+    @AuditLogging(action = AuditAction.UPDATE, entityType = "Transaction")
+    public HoldingResponse updateTransaction(Long userId, Long assetId, Long transactionId,
+                                             TransactionUpdateRequest request) {
+        Transaction tx = transactionRepository
+                .findByIdAndAssetIdAndAsset_Account_User_Id(transactionId, assetId, userId)
+                .orElseThrow(() -> new NotFoundException("거래 내역을 찾을 수 없습니다."));
+
+        Asset asset = tx.getAsset();
+        boolean isForeignStock = asset.getCategory() == AssetCategory.FOREIGN_STOCK;
+        if (isForeignStock && request.fx() == null) {
+            throw new IllegalArgumentException("해외주식은 환율(fx) 값이 필요합니다.");
+        }
+
+        // 이 거래를 뺐다가 새 값으로 다시 넣었을 때의 보유수량을 미리 계산한다.
+        // 실제 반영 후 재조회하면 flush 시점에 기대는 코드가 되므로 산술로 먼저 확인한다.
+        BigDecimal projected = calculateNetQuantity(asset)
+                .subtract(signedQuantity(tx.getType(), tx.getQuantity()))
+                .add(signedQuantity(tx.getType(), request.quantity()));
+        if (projected.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException(
+                    "이렇게 수정하면 보유 수량이 마이너스가 돼요 (" + plain(projected)
+                            + "). 매도 내역을 먼저 정리해주세요."); // D-057
+        }
+
+        tx.update(request.tradeDate(), request.quantity(), request.unitPrice(),
+                isForeignStock ? request.fx() : null);
+
+        return toHoldingResponse(asset);
+    }
+
+    /** M6 후속: 잘못 등록한 매매 거래 삭제. 정정과 동일하게 보유수량 음수를 막는다. */
+    @Transactional
+    @AuditLogging(action = AuditAction.DELETE, entityType = "Transaction")
+    public void deleteTransaction(Long userId, Long assetId, Long transactionId) {
+        Transaction tx = transactionRepository
+                .findByIdAndAssetIdAndAsset_Account_User_Id(transactionId, assetId, userId)
+                .orElseThrow(() -> new NotFoundException("거래 내역을 찾을 수 없습니다."));
+
+        BigDecimal projected = calculateNetQuantity(tx.getAsset())
+                .subtract(signedQuantity(tx.getType(), tx.getQuantity()));
+        if (projected.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException(
+                    "이 매수를 지우면 보유 수량이 마이너스가 돼요 (" + plain(projected)
+                            + "). 매도 내역을 먼저 지워주세요."); // D-057
+        }
+
+        transactionRepository.delete(tx);
+    }
+
+    /**
+     * 수량 컬럼이 scale 8이라 그대로 찍으면 "-2.00000000"이 된다 — 사용자에게 보이는 문구용 정리.
+     * 문구에서는 숫자를 괄호로 빼둔다: 숫자 뒤에 조사를 붙이면 읽는 소리에 따라 이/가가 갈려서
+     * ("-1이", "-0.5가") 한쪽으로 고정할 수가 없다.
+     */
+    private String plain(BigDecimal value) {
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    private BigDecimal signedQuantity(TransactionType type, BigDecimal quantity) {
+        return type == TransactionType.BUY ? quantity : quantity.negate();
+    }
+
+    /** 자산 표시 이름 변경(계좌 이름 변경과 같은 성격). 종목코드는 건드리지 않는다. */
+    @Transactional
+    @AuditLogging(action = AuditAction.UPDATE, entityType = "Asset")
+    public HoldingResponse rename(Long userId, Long assetId, AssetRenameRequest request) {
+        Asset asset = assetRepository.findByIdAndAccount_User_Id(assetId, userId)
+                .orElseThrow(() -> new NotFoundException("자산을 찾을 수 없습니다."));
+        asset.rename(request.name());
+        return toHoldingResponse(asset);
+    }
+
+    /**
+     * 자산 삭제. 거래·배당·입금은 FK ON DELETE CASCADE(V2)로 DB가 함께 지운다 —
+     * 되돌릴 수 없으므로 프론트에서 확인 모달을 거친다(계좌 삭제와 동일 정책, D-056).
+     */
+    @Transactional
+    @AuditLogging(action = AuditAction.DELETE, entityType = "Asset")
+    public void delete(Long userId, Long assetId) {
+        Asset asset = assetRepository.findByIdAndAccount_User_Id(assetId, userId)
+                .orElseThrow(() -> new NotFoundException("자산을 찾을 수 없습니다."));
+        assetRepository.delete(asset);
+    }
+
+    /**
+     * 사용자가 끌어서 정한 자산 순서 저장. 계좌 스코프 — 한 계좌 안에서만 의미가 있다.
+     * 계좌 소유자 검증을 먼저 하고, 요청 id가 그 계좌의 자산이 아니면 전체를 거부한다.
+     */
+    @Transactional
+    @AuditLogging(action = AuditAction.UPDATE, entityType = "Asset(order)")
+    public void reorderAssets(Long userId, AssetReorderRequest request) {
+        accountRepository.findByIdAndUserId(request.accountId(), userId)
+                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
+
+        Map<Long, Asset> owned = assetRepository.findAllByAccountId(request.accountId()).stream()
+                .collect(Collectors.toMap(Asset::getId, a -> a));
+
+        List<Long> ids = request.orderedIds();
+        if (new HashSet<>(ids).size() != ids.size()) {
+            throw new IllegalArgumentException("자산 순서에 중복된 항목이 있습니다.");
+        }
+        for (Long id : ids) {
+            if (!owned.containsKey(id)) {
+                throw new NotFoundException("자산을 찾을 수 없습니다.");
+            }
+        }
+
+        for (int i = 0; i < ids.size(); i++) {
+            owned.get(ids.get(i)).updateSortOrder(i);
+        }
+    }
+
+    /**
+     * 현금·외화 자산 등록/갱신. 거래 기반이 아니라 잔액을 그대로 저장한다.
+     * 계좌당 통화별 1건만 유지 — 같은 통화를 다시 등록하면 새 자산을 만들지 않고 잔액을 덮어쓴다.
+     * 기관유형으로 제한하지 않는다 — 증권사 예수금, 은행 잔액, 거래소 원화/달러 예수금 모두
+     * 실제로 존재하는 잔액이다. D-198(연금저축·IRP 개별 매수 차단)은 "지정 상품만 거래 가능"이라는
+     * 상품 제약이라 상품이 아닌 예수금 잔액에는 적용하지 않는다.
+     */
+    @Transactional
+    @AuditLogging(action = AuditAction.CREATE, entityType = "Asset(CASH)")
+    public HoldingResponse upsertCash(Long userId, CashRequest request) {
+        Account account = accountRepository.findByIdAndUserId(request.accountId(), userId)
+                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
+
+        String currency = request.currency();
+        Asset asset = assetRepository.findByAccountIdAndSymbol(account.getId(), currency)
+                .orElseGet(() -> assetRepository.save(
+                        Asset.builder()
+                                .account(account)
+                                .category(AssetCategory.CASH)
+                                .name(cashAssetName(currency))
+                                .symbol(currency)
+                                .currency(currency)
+                                .cash(BigDecimal.ZERO)
+                                .build()
+                ));
+
+        if (asset.getCategory() != AssetCategory.CASH) {
+            throw new IllegalArgumentException("같은 계좌에 동일한 심볼의 다른 자산이 이미 있습니다.");
+        }
+
+        asset.updateCashBalance(request.balance());
+        return toHoldingResponse(asset);
+    }
+
+    /** 자산 상세 화면의 잔액 수정. 이력 없이 덮어쓴다. */
+    @Transactional
+    @AuditLogging(action = AuditAction.UPDATE, entityType = "Asset(CASH)")
+    public HoldingResponse updateCashBalance(Long userId, Long assetId, CashBalanceRequest request) {
+        Asset asset = assetRepository.findByIdAndAccount_User_Id(assetId, userId)
+                .orElseThrow(() -> new NotFoundException("자산을 찾을 수 없습니다."));
+
+        if (asset.getCategory() != AssetCategory.CASH) {
+            throw new IllegalArgumentException("현금 자산만 잔액을 직접 수정할 수 있습니다.");
+        }
+
+        asset.updateCashBalance(request.balance());
         return toHoldingResponse(asset);
     }
 
@@ -204,6 +385,10 @@ public class AssetService {
     // M6 수정: quantity가 이제 BUY 누적만이 아니라 BUY-SELL 순보유량이다.
     // (기존 버그 수정 — SELL 트랜잭션이 저장돼도 보유수량에 전혀 반영되지 않던 문제)
     private HoldingResponse toHoldingResponse(Asset asset) {
+        if (asset.getCategory() == AssetCategory.CASH) {
+            return toCashHoldingResponse(asset);
+        }
+
         BigDecimal quantity = calculateNetQuantity(asset);
         BigDecimal avgPrice = calculateAveragePrice(asset);
         BigDecimal costBasis = avgPrice.multiply(quantity);
@@ -242,19 +427,62 @@ public class AssetService {
                 asset.getId(), asset.getAccount().getId(), asset.getSymbol(), asset.getName(),
                 asset.getCategory().name(), asset.getCurrency(), quantity, avgPrice,
                 currentPrice, evaluationAmount, profitAmount, profitRate,
-                exchangeRate, krwEvaluationAmount, exchangeRateBaseDate
+                exchangeRate, krwEvaluationAmount, exchangeRateBaseDate, asset.getSortOrder()
         );
     }
 
     // 프론트 assets/new/page.tsx의 allowedCategories()와 동일한 매핑 — 백엔드에도
     // 강제해 malformed 요청으로 계좌 유형과 안 맞는 카테고리(예: 증권사 계좌에 CRYPTO)가
     // 저장되는 걸 막는다.
+    private String cashAssetName(String currency) {
+        return "USD".equals(currency) ? "미국 달러" : "원화 현금";
+    }
+
     private boolean isCategoryAllowedForInstitution(InstitutionType institutionType, AssetCategory category) {
         return switch (institutionType) {
             case SECURITIES -> category == AssetCategory.DOMESTIC_STOCK || category == AssetCategory.FOREIGN_STOCK;
             case EXCHANGE -> category == AssetCategory.CRYPTO;
             case BANK -> false;
         };
+    }
+
+    /**
+     * 현금은 거래에서 수량·평단을 파생하지 않는다 — 입력한 잔액이 곧 평가금액이다.
+     * 매입환율을 받지 않으므로 손익(profitAmount/profitRate)은 항상 null로 둔다.
+     * 외화는 고시 매매기준율로 원화환산만 하고, 환율 조회 실패 시 krwEvaluationAmount를
+     * null로 둬서 대시보드가 "시세 미조회 자산"과 같은 규칙으로 제외하게 한다.
+     */
+    private HoldingResponse toCashHoldingResponse(Asset asset) {
+        BigDecimal balance = asset.getCash() != null ? asset.getCash() : BigDecimal.ZERO;
+        boolean isKrw = "KRW".equals(asset.getCurrency());
+
+        BigDecimal exchangeRate = null;
+        BigDecimal krwEvaluationAmount = isKrw ? balance : null;
+        String exchangeRateBaseDate = null;
+
+        if (!isKrw) {
+            Optional<ExchangeRate> rate = exchangeRateService.getRate(asset.getCurrency());
+            if (rate.isPresent()) {
+                exchangeRate = rate.get().getDealBasR();
+                krwEvaluationAmount = balance.multiply(exchangeRate);
+                exchangeRateBaseDate = rate.get().getBaseDate().toString();
+            }
+        }
+
+        return new HoldingResponse(
+                asset.getId(), asset.getAccount().getId(), asset.getSymbol(), asset.getName(),
+                asset.getCategory().name(), asset.getCurrency(), balance, null,
+                null, balance, null, null,
+                exchangeRate, krwEvaluationAmount, exchangeRateBaseDate, asset.getSortOrder()
+        );
+    }
+
+    /** 연금저축·IRP 매수 가능 판정(D-198). 마스터에 없는 종목은 ETF로 취급하지 않는다. */
+    private boolean isEtf(String symbolCode) {
+        return symbolCode != null
+                && domesticStockRepository.findById(symbolCode)
+                .map(DomesticStock::isEtf)
+                .orElse(false);
     }
 
     private String resolveCurrency(BuyRequest request) {

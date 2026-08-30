@@ -36,6 +36,43 @@ public class AssetDtos {
             @NotNull @PastOrPresent LocalDate tradeDate   // D-061
     ) {}
 
+    /**
+     * 잘못 입력한 매매 거래의 정정. 매수/매도 구분(type)은 바꾸지 않는다 —
+     * 방향을 뒤집어야 하면 삭제 후 재등록. assetId/transactionId는 경로에서 받는다.
+     */
+    public record TransactionUpdateRequest(
+            @NotNull @DecimalMin(value = "0.00000001") BigDecimal quantity,
+            @NotNull @DecimalMin(value = "0") BigDecimal unitPrice,
+            BigDecimal fx,       // FOREIGN_STOCK만 필수 — BuyRequest/SellRequest와 동일 규칙
+            @NotNull @PastOrPresent LocalDate tradeDate
+    ) {}
+
+    /**
+     * 현금·외화 자산 등록/갱신. 거래(BUY/SELL)가 아니라 잔액을 그대로 받는다 —
+     * 계좌당 통화별로 자산 1건만 두고, 같은 통화를 다시 등록하면 잔액을 덮어쓴다.
+     */
+    public record CashRequest(
+            @NotNull Long accountId,
+            @NotBlank @Pattern(regexp = "KRW|USD", message = "지원하는 통화는 KRW, USD 입니다.") String currency,
+            @NotNull @DecimalMin(value = "0") BigDecimal balance
+    ) {}
+
+    /** 자산 표시 이름 변경. 종목코드는 바뀌지 않는다(시세 조회 키라서). */
+    public record AssetRenameRequest(
+            @NotBlank @Size(max = 100) String name
+    ) {}
+
+    /** 자산 상세 화면에서 현금 잔액만 수정. assetId는 경로에서 받는다. */
+    public record CashBalanceRequest(
+            @NotNull @DecimalMin(value = "0") BigDecimal balance
+    ) {}
+
+    /** 사용자가 끌어서 정한 자산 순서. 한 계좌 안에서만 의미가 있어 accountId를 함께 받는다. */
+    public record AssetReorderRequest(
+            @NotNull Long accountId,
+            @NotEmpty java.util.List<Long> orderedIds
+    ) {}
+
     public record HoldingResponse(
             Long assetId,
             Long accountId,
@@ -51,7 +88,8 @@ public class AssetDtos {
             BigDecimal profitRate,
             BigDecimal exchangeRate,
             BigDecimal krwEvaluationAmount,
-            String exchangeRateBaseDate
+            String exchangeRateBaseDate,
+            Integer sortOrder
     ) {}
 
     /**

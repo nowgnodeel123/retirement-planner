@@ -53,7 +53,9 @@ public class DashboardService {
             BigDecimal evalKrw;
             BigDecimal profit;
 
-            if ("FOREIGN_STOCK".equals(h.category())) {
+            // 원화환산이 필요한지는 카테고리가 아니라 통화로 판단한다 — 해외주식(USD)뿐 아니라
+            // 외화 현금(USD)도 evaluationAmount가 원화가 아니어서 같은 규칙을 타야 한다.
+            if (!"KRW".equals(h.currency())) {
                 if (h.krwEvaluationAmount() != null && h.exchangeRate() != null) {
                     evalKrw = h.krwEvaluationAmount();
                     profit = h.profitAmount() != null
