@@ -34,6 +34,10 @@ public class Account {
     @Column(name = "detail_type", nullable = false, length = 20)
     private AccountDetailType detailType;
 
+    // 사용자가 끌어서 정한 순서. null이면 미지정 — 목록에서 지정된 것들 뒤로 간다.
+    @Column(name = "sort_order")
+    private Integer sortOrder;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -54,5 +58,9 @@ public class Account {
 
     public void rename(String name) {
         this.name = name;
+    }
+
+    public void updateSortOrder(Integer sortOrder) {
+        this.sortOrder = sortOrder;
     }
 }

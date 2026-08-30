@@ -41,6 +41,16 @@ public class AccountController {
         return ResponseEntity.ok(accountService.rename(userId, accountId, request));
     }
 
+    /** 끌어서 바꾼 계좌 순서 저장. 화면 순서 그대로의 id 목록. */
+    @PatchMapping("/order")
+    public ResponseEntity<Void> reorder(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody ReorderRequest request
+    ) {
+        accountService.reorder(userId, request);
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping("/{accountId}")
     public ResponseEntity<Void> delete(
             @AuthenticationPrincipal Long userId,
