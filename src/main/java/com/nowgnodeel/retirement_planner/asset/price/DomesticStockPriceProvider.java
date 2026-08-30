@@ -1,6 +1,8 @@
 package com.nowgnodeel.retirement_planner.asset.price;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.nowgnodeel.retirement_planner.asset.stock.entity.DomesticStock;
+import com.nowgnodeel.retirement_planner.asset.stock.repository.DomesticStockRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,7 @@ import java.time.format.DateTimeFormatter;
 public class DomesticStockPriceProvider implements PriceProvider {
 
     private final RestClient externalApiRestClient;
+    private final DomesticStockRepository domesticStockRepository;
 
     @Value("${price-api.data-go-kr.key}")
     private String apiKey;
@@ -28,6 +31,16 @@ public class DomesticStockPriceProvider implements PriceProvider {
         // KRX상장종목정보는 'A' 접두사 포함(A005930), 주식시세정보는 접두사 없는 6자리(005930)로 추정됨
         String queryCode = symbolCode.startsWith("A") ? symbolCode.substring(1) : symbolCode;
 
+        // ETF는 주식시세정보(GetStockSecuritiesInfoService)에 아예 없다 — 실제 호출로 확인했다
+        // (069500 KODEX 200을 여러 영업일로 조회해도 totalCount=0, 005930 삼성전자는 정상).
+        // 증권상품시세정보라는 다른 서비스를 써야 하고, data.go.kr은 서비스별로 활용신청을 받는다.
+        boolean isEtf = domesticStockRepository.findById(queryCode)
+                .map(DomesticStock::isEtf)
+                .orElse(false);
+        String path = isEtf
+                ? "/1160100/service/GetSecuritiesProductInfoService/getETFPriceInfo"
+                : "/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo";
+
         for (int daysBack = 1; daysBack <= 10; daysBack++) {
             String basDt = LocalDate.now().minusDays(daysBack).format(DateTimeFormatter.BASIC_ISO_DATE);
 
@@ -35,7 +48,7 @@ public class DomesticStockPriceProvider implements PriceProvider {
                     .uri(uriBuilder -> uriBuilder
                             .scheme("https")
                             .host("apis.data.go.kr")
-                            .path("/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo")
+                            .path(path)
                             .queryParam("serviceKey", apiKey)
                             .queryParam("resultType", "json")
                             .queryParam("numOfRows", 10)
@@ -67,7 +80,8 @@ public class DomesticStockPriceProvider implements PriceProvider {
             }
             log.info("basDt={} symbol={}(query={}) 유효한 시세 없음", basDt, symbolCode, queryCode);
         }
-        throw new IllegalStateException("국내주식 시세 조회 실패(최근 10일 내 데이터 없음): " + symbolCode);
+        throw new IllegalStateException(
+                (isEtf ? "ETF" : "국내주식") + " 시세 조회 실패(최근 10일 내 데이터 없음): " + symbolCode);
     }
 
     private BigDecimal fallback(String symbolCode, Throwable t) {

@@ -20,4 +20,11 @@ public interface DomesticStockRepository extends JpaRepository<DomesticStock, St
     @Query("SELECT s FROM DomesticStock s WHERE s.name LIKE %:keyword% " +
             "ORDER BY LENGTH(s.name) ASC, s.name ASC")
     List<DomesticStock> searchByNameOrderByRelevance(@Param("keyword") String keyword, Pageable pageable);
+
+    // 연금저축·IRP 자산 추가 화면 전용 — 같은 랭킹 규칙에 ETF 조건만 더한다(D-198).
+    @Query("SELECT s FROM DomesticStock s WHERE s.etf = true AND s.name LIKE %:keyword% " +
+            "ORDER BY LENGTH(s.name) ASC, s.name ASC")
+    List<DomesticStock> searchEtfByNameOrderByRelevance(@Param("keyword") String keyword, Pageable pageable);
+
+    long countByEtfTrue();
 }
