@@ -43,10 +43,9 @@ public class DomesticStockController {
     public ResponseEntity<String> refreshEtfs() {
         int count = etfMasterService.refresh();
         if (count == 0) {
-            int seeded = etfMasterService.seed();
             return ResponseEntity.ok(
-                    "정식 ETF API를 쓸 수 없어 부트스트랩 시드 " + seeded + "건만 적재했습니다. "
-                            + "data.go.kr 금융위원회_증권상품시세정보 활용신청이 필요합니다.");
+                    "ETF를 한 건도 받지 못했습니다. data.go.kr 금융위원회_증권상품시세정보 "
+                            + "활용신청 상태와 최근 영업일 데이터 여부를 확인하세요.");
         }
         return ResponseEntity.ok(count + "건 갱신 완료");
     }

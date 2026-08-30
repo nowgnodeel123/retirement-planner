@@ -15,7 +15,6 @@ import org.springframework.web.client.RestClient;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 
 /**
  * 국내 ETF 마스터 목록을 domestic_stocks에 채운다(is_etf = true).
@@ -27,13 +26,11 @@ import java.util.List;
  * 활용신청을 따로 받기 때문에 같은 키라도 신청 전에는
  * {@code SERVICE_KEY_IS_NOT_REGISTERED_ERROR}가 돌아온다.
  *
- * <p>그래서 이 서비스는 두 경로를 둔다:
- * <ol>
- *   <li>정식 경로 — 위 API를 호출해 전체 ETF를 적재한다. 활용신청이 승인되면 자동으로 동작한다.</li>
- *   <li>부트스트랩 시드 — API를 못 쓰는 동안에도 연금저축 화면이 빈 검색창으로 죽지 않도록,
- *       연금저축·IRP에서 실제로 많이 담는 대표 ETF만 최소한으로 넣어둔다.
- *       <b>전체 목록이 아니다</b> — 정식 경로가 열리면 그대로 덮어써진다.</li>
- * </ol>
+ * <p>활용신청이 승인되면 자동으로 동작한다. 승인 전에는 마스터가 비어 있고 그 상태를
+ * 기동 로그로 명확히 알린다 — <b>대표 ETF를 코드에 하드코딩해 두는 방식은 쓰지 않는다.</b>
+ * 실제로 그렇게 했다가 20종 중 7종이 코드와 이름이 어긋나 있었다(예: 449180을
+ * "TIGER 미국배당다우존스"로 적었으나 실제로는 "KODEX 미국S&P500(H)"). 종목 마스터는
+ * 사람이 외워서 적을 값이 아니다.
  */
 @Slf4j
 @Service
@@ -46,44 +43,16 @@ public class EtfMasterService {
     @Value("${price-api.data-go-kr.key}")
     private String apiKey;
 
-    /**
-     * 부트스트랩 시드. 정식 API가 열리기 전까지만 쓰이는 최소 목록이라 "전체 ETF"가 아니다.
-     * 종목코드는 KRX 상장 코드 기준.
-     */
-    private static final List<String[]> SEED_ETFS = List.of(
-            new String[]{"379800", "KODEX 미국S&P500"},
-            new String[]{"379810", "KODEX 미국나스닥100"},
-            new String[]{"360750", "TIGER 미국S&P500"},
-            new String[]{"133690", "TIGER 미국나스닥100"},
-            new String[]{"381180", "TIGER 미국필라델피아반도체나스닥"},
-            new String[]{"449180", "TIGER 미국배당다우존스"},
-            new String[]{"458730", "TIGER 미국배당다우존스타겟커버드콜2호"},
-            new String[]{"069500", "KODEX 200"},
-            new String[]{"102110", "TIGER 200"},
-            new String[]{"229200", "KODEX 코스닥150"},
-            new String[]{"305720", "KODEX 2차전지산업"},
-            new String[]{"091160", "KODEX 반도체"},
-            new String[]{"148070", "KOSEF 국고채10년"},
-            new String[]{"273130", "KODEX 종합채권(AA-이상)액티브"},
-            new String[]{"357870", "TIGER CD금리투자KIS"},
-            new String[]{"423160", "KODEX 24-12 은행채(AA+이상)액티브"},
-            new String[]{"329750", "TIGER 미국MSCI리츠"},
-            new String[]{"316140", "KODEX 은행"},
-            new String[]{"278530", "KODEX 200TR"},
-            new String[]{"294400", "KOSEF 미국달러선물"}
-    );
-
-    /** 기동 직후 ETF가 하나도 없으면 한 번 채운다 — 연금저축 화면이 빈 검색으로 시작하지 않도록. */
+    /** 기동 직후 ETF가 하나도 없으면 한 번 채운다. */
     @EventListener(ApplicationReadyEvent.class)
     public void bootstrapIfEmpty() {
         try {
             if (domesticStockRepository.countByEtfTrue() > 0) return;
-            int loaded = refresh();
-            if (loaded == 0) {
-                int seeded = seed();
-                log.warn("ETF 정식 API를 쓸 수 없어 부트스트랩 시드 {}건만 적재했습니다. "
-                        + "data.go.kr 금융위원회_증권상품시세정보 활용신청 후 "
-                        + "POST /api/admin/etfs/refresh 로 전체 목록을 받으세요.", seeded);
+            if (refresh() == 0) {
+                log.warn("ETF 마스터가 비어 있고 갱신도 실패했습니다. data.go.kr "
+                        + "금융위원회_증권상품시세정보 활용신청 상태를 확인한 뒤 "
+                        + "POST /api/admin/etfs/refresh 를 호출하세요. "
+                        + "그때까지 연금저축·IRP 계좌에서는 ETF를 찾을 수 없습니다.");
             }
         } catch (Exception e) {
             log.warn("ETF 마스터 초기 적재 실패(무시하고 기동 계속): {}", e.toString());
@@ -141,14 +110,6 @@ public class EtfMasterService {
         }
         log.warn("ETF 마스터: 최근 10일 안에 조회 가능한 데이터가 없습니다.");
         return 0;
-    }
-
-    @Transactional
-    public int seed() {
-        for (String[] row : SEED_ETFS) {
-            upsertEtf(row[0], row[1]);
-        }
-        return SEED_ETFS.size();
     }
 
     private void upsertEtf(String symbolCode, String name) {
