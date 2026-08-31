@@ -109,13 +109,35 @@ public class SimulationService {
     // 메인 진입점
     // ======================================================================
 
-    public SimulationResponseDto calculate(SimulationRequestDto req) {
-        // WHY: 필드 단위 @Min/@Max로는 잡을 수 없는 필드 간 모순.
-        // 28세가 40년 납입 같은 입력은 크래시는 없지만 무의미한 결과를 낳는다. (검토 Q-1)
+    /**
+     * D-219: 포트폴리오 대시보드 카드용 경량 계산. 카드에 필요한 건 은퇴 가능 나이와
+     * 실현 가능 여부 둘뿐인데, calculate()는 몬테카를로 1,000회 + 타임라인 + 세금 상세까지
+     * 전부 만든다. 대시보드는 앱을 열 때마다 뜨는 화면이라 그 비용을 매번 치를 수 없다.
+     *
+     * 기존 calculate()는 건드리지 않고 같은 탐색 로직만 재사용한다 — 두 경로가 다른 답을
+     * 내면 "카드와 위저드 결과가 다르다"는 최악의 버그가 되므로 계산은 반드시 공유한다.
+     *
+     * 이 메서드도 userId를 모른다. D-116대로 계산기는 계속 무상태다.
+     */
+    public RetirementAgeOnly calculateRetirementAgeOnly(SimulationRequestDto req) {
+        validateAgeAndPensionYears(req);
+        RetirementSearchResult search = findEarliestRetirementAge(req);
+        return new RetirementAgeOnly(search.age(), search.feasible());
+    }
+
+    public record RetirementAgeOnly(int estimatedRetirementAge, boolean feasible) {}
+
+    // WHY: 필드 단위 @Min/@Max로는 잡을 수 없는 필드 간 모순.
+    // 28세가 40년 납입 같은 입력은 크래시는 없지만 무의미한 결과를 낳는다. (검토 Q-1)
+    private void validateAgeAndPensionYears(SimulationRequestDto req) {
         if (req.getPensionYearsPaid() > req.getCurrentAge() - 18) {
             throw new IllegalArgumentException(
                     "국민연금 납입 기간이 나이에 비해 너무 길어요. (최대 " + (req.getCurrentAge() - 18) + "년)");
         }
+    }
+
+    public SimulationResponseDto calculate(SimulationRequestDto req) {
+        validateAgeAndPensionYears(req);
 
         RetirementSearchResult search = findEarliestRetirementAge(req);
         int estimatedRetirementAge = search.age();

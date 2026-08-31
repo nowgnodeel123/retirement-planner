@@ -73,4 +73,50 @@ public class SimulationRequestDto {
     private boolean usePreciseHealthInsurance = false;
     private Double realEstateValue = 0.0;
     private Double financialAssetValue = 0.0;
+
+    // ==================================================================
+    // D-219: 대시보드 카드가 저장된 프로필로 이 요청을 조립하기 위한 빌더.
+    //
+    // WHY Lombok @Builder를 쓰지 않는가: @Builder는 전체 필드 생성자를 만들면서
+    // 암묵적 기본 생성자를 없앤다. 그러면 Jackson이 /calculate 요청 바디를 역직렬화하지
+    // 못해 기존 엔드포인트가 통째로 깨진다. 또 필드 초기화값(0.05/0.04/0.06/0.07 등)도
+    // @Builder.Default 없이는 조용히 무시된다 — 수익률이 0으로 들어가면 은퇴 나이가
+    // 실제보다 훨씬 늦게 나오는데 예외 하나 없이 그냥 틀린 답이 된다.
+    // 같은 클래스 안의 수제 빌더는 새 인스턴스의 필드를 직접 채우므로 생성자도
+    // 기본값도 건드리지 않는다.
+    // ==================================================================
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static class Builder {
+        private final SimulationRequestDto dto = new SimulationRequestDto();
+
+        public Builder currentAge(Integer v) { dto.currentAge = v; return this; }
+        public Builder monthlyIncome(Double v) { dto.monthlyIncome = v; return this; }
+        public Builder pensionYearsPaid(Integer v) { dto.pensionYearsPaid = v; return this; }
+        public Builder pensionType(String v) { if (v != null) dto.pensionType = v; return this; }
+        public Builder yearsOfService(Integer v) { if (v != null) dto.yearsOfService = v; return this; }
+        public Builder dcCurrentBalance(Double v) { if (v != null) dto.dcCurrentBalance = v; return this; }
+        public Builder nationalPensionReceiptType(String v) { if (v != null) dto.nationalPensionReceiptType = v; return this; }
+        public Builder nationalPensionReceiptAge(Integer v) { dto.nationalPensionReceiptAge = v; return this; }
+        public Builder militaryServiceMonths(Integer v) { if (v != null) dto.militaryServiceMonths = v; return this; }
+        public Builder childrenCount(Integer v) { if (v != null) dto.childrenCount = v; return this; }
+        public Builder monthlyIrpContribution(Double v) { dto.monthlyIrpContribution = v; return this; }
+        public Builder currentIrpBalance(Double v) { if (v != null) dto.currentIrpBalance = v; return this; }
+        public Builder monthlyPensionSavingsContribution(Double v) { dto.monthlyPensionSavingsContribution = v; return this; }
+        public Builder currentPensionSavingsBalance(Double v) { if (v != null) dto.currentPensionSavingsBalance = v; return this; }
+        public Builder targetMonthlyExpense(Double v) { dto.targetMonthlyExpense = v; return this; }
+        public Builder irpReturnRate(Double v) { if (v != null) dto.irpReturnRate = v; return this; }
+        public Builder pensionReturnRate(Double v) { if (v != null) dto.pensionReturnRate = v; return this; }
+        public Builder pensionSavingsReturnRate(Double v) { if (v != null) dto.pensionSavingsReturnRate = v; return this; }
+        public Builder stockAssetBalance(Double v) { if (v != null) dto.stockAssetBalance = v; return this; }
+        public Builder stockReturnRate(Double v) { if (v != null) dto.stockReturnRate = v; return this; }
+        public Builder monthlyStockInvestment(Double v) { if (v != null) dto.monthlyStockInvestment = v; return this; }
+        public Builder usePreciseHealthInsurance(boolean v) { dto.usePreciseHealthInsurance = v; return this; }
+        public Builder realEstateValue(Double v) { if (v != null) dto.realEstateValue = v; return this; }
+        public Builder financialAssetValue(Double v) { if (v != null) dto.financialAssetValue = v; return this; }
+
+        public SimulationRequestDto build() { return dto; }
+    }
 }
