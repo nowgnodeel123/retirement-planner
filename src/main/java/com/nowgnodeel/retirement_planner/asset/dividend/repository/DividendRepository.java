@@ -5,6 +5,8 @@ import com.nowgnodeel.retirement_planner.asset.dividend.entity.Dividend;
 import com.nowgnodeel.retirement_planner.asset.entity.AssetCategory;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -39,4 +41,29 @@ public interface DividendRepository extends JpaRepository<Dividend, Long> {
 
     @EntityGraph(attributePaths = "asset")
     List<Dividend> findAllByAsset_AccountIdAndAsset_Category(Long accountId, AssetCategory category);
+
+    // ── M15: 인별(사용자 전체) 스코프 ─────────────────────────────────────────
+    @EntityGraph(attributePaths = "asset")
+    @Query("SELECT d FROM Dividend d WHERE d.asset.account.user.id = :userId " +
+            "AND d.payDate BETWEEN :start AND :end")
+    List<Dividend> findAllByUserInPeriod(
+            @Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    @EntityGraph(attributePaths = "asset")
+    @Query("SELECT d FROM Dividend d WHERE d.asset.account.user.id = :userId " +
+            "AND d.asset.category = :category AND d.payDate BETWEEN :start AND :end")
+    List<Dividend> findAllByUserAndCategoryInPeriod(
+            @Param("userId") Long userId, @Param("category") AssetCategory category,
+            @Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    // 금융소득종합과세 2천만원 판정 대상만 — 세제혜택 계좌(ISA/IRP/연금저축)의 배당은
+    // 금융소득에 합산되지 않는다(인출 시 별도 과세). 이 필터를 빼면 연금계좌 배당까지
+    // 2천만원 기준에 더해져 "종합과세 대상"이라고 잘못 판정한다.
+    @EntityGraph(attributePaths = "asset")
+    @Query("SELECT d FROM Dividend d WHERE d.asset.account.user.id = :userId " +
+            "AND d.asset.account.detailType = com.nowgnodeel.retirement_planner.asset.entity.AccountDetailType.NORMAL " +
+            "AND d.asset.account.institutionType <> com.nowgnodeel.retirement_planner.asset.entity.InstitutionType.BANK " +
+            "AND d.payDate BETWEEN :start AND :end")
+    List<Dividend> findTaxableByUserInPeriod(
+            @Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 }

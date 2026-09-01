@@ -2,6 +2,7 @@
 package com.nowgnodeel.retirement_planner.asset.tax.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public class TaxDtos {
 
@@ -15,7 +16,19 @@ public class TaxDtos {
     public record TaxSummaryResponse(
             int year,
             CapitalGainsEstimate capitalGains,
-            DividendIncomeJudgement dividendIncome
+            DividendIncomeJudgement dividendIncome,
+            TaxScope scope
+    ) {}
+
+    /**
+     * M15(D-232): 이 집계가 어떤 계좌를 보고 어떤 계좌를 뺐는지 화면에 밝힌다.
+     * 공제·기준금액이 인별 한도라 계좌를 합쳐야 맞지만, 합치면 "왜 내 연금계좌 매도차익이
+     * 안 잡히지?"라는 의문이 생긴다 — 제외 사실을 숨기면 사용자가 앱을 틀렸다고 여긴다.
+     */
+    public record TaxScope(
+            int taxableAccountCount,   // 집계에 포함된 계좌 수(일반 증권·거래소)
+            int excludedAccountCount,  // 세제혜택(ISA/IRP/연금저축)·은행이라 제외한 계좌 수
+            List<String> excludedAccountNames
     ) {}
 
     /**

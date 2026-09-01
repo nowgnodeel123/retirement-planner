@@ -3,12 +3,14 @@ package com.nowgnodeel.retirement_planner.asset.tax.service;
 import com.nowgnodeel.retirement_planner.asset.dividend.entity.Dividend;
 import com.nowgnodeel.retirement_planner.asset.dividend.repository.DividendRepository;
 import com.nowgnodeel.retirement_planner.asset.entity.Account;
+import com.nowgnodeel.retirement_planner.asset.entity.AccountDetailType;
 import com.nowgnodeel.retirement_planner.asset.entity.Asset;
 import com.nowgnodeel.retirement_planner.asset.entity.AssetCategory;
+import com.nowgnodeel.retirement_planner.asset.entity.InstitutionType;
+import com.nowgnodeel.retirement_planner.asset.entity.Transaction;
 import com.nowgnodeel.retirement_planner.asset.repository.AccountRepository;
 import com.nowgnodeel.retirement_planner.asset.repository.TransactionRepository;
 import com.nowgnodeel.retirement_planner.asset.service.AssetService;
-import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,19 +19,21 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 import static com.nowgnodeel.retirement_planner.asset.tax.dto.TaxDtos.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * M15(D-232) 이후: 인별 스코프 세금 집계.
+ * 이 클래스의 핵심 관심사는 "인별 한도가 인별로 딱 한 번만 적용되는가"다 —
+ * 계좌별로 적용하던 것이 실제 결함이었다.
+ */
 @ExtendWith(MockitoExtension.class)
 class TaxServiceTest {
 
@@ -40,7 +44,6 @@ class TaxServiceTest {
     @InjectMocks TaxService taxService;
 
     private static final Long USER_ID = 1L;
-    private static final Long ACCOUNT_ID = 10L;
 
     private Dividend dividendOf(AssetCategory category, BigDecimal amount, BigDecimal fx) {
         Asset asset = mock(Asset.class);
@@ -52,64 +55,162 @@ class TaxServiceTest {
         return dividend;
     }
 
+    private Account accountOf(String name, InstitutionType institution, AccountDetailType detail) {
+        Account account = mock(Account.class);
+        when(account.getDetailType()).thenReturn(detail);
+        // 서비스가 &&로 단락 평가하므로 detailType이 NORMAL일 때만 institutionType을 읽는다.
+        if (detail == AccountDetailType.NORMAL) {
+            when(account.getInstitutionType()).thenReturn(institution);
+        }
+        boolean excluded = detail != AccountDetailType.NORMAL || institution == InstitutionType.BANK;
+        if (excluded) {
+            when(account.getName()).thenReturn(name);
+        }
+        return account;
+    }
+
+    private void noAccounts() {
+        given(accountRepository.findAllByUserId(USER_ID)).willReturn(Collections.emptyList());
+    }
+
+    private void noSells() {
+        given(transactionRepository.findTaxableByUserAndCategoryAndTypeInPeriod(any(), any(), any(), any(), any()))
+                .willReturn(Collections.emptyList());
+    }
+
+    private void noDividends() {
+        given(dividendRepository.findTaxableByUserInPeriod(any(), any(), any()))
+                .willReturn(Collections.emptyList());
+    }
+
+    // ── 인별 한도 1회 적용 (D-232가 고친 결함) ─────────────────────────────
+
+    @Test
+    @DisplayName("D-232: 기본공제 250만원은 계좌가 몇 개든 전체 합계에서 딱 한 번만 뺀다")
+    void basicDeduction_appliedOncePerPerson() {
+        noAccounts();
+        noDividends();
+
+        // 서로 다른 계좌에서 발생한 매도 3건, 각 300만원 이익 → 합 900만원.
+        // 계좌별로 공제하던 예전 방식이면 900만 - 750만 = 150만이 과세표준이 됐다.
+        Transaction t1 = mock(Transaction.class);
+        Transaction t2 = mock(Transaction.class);
+        Transaction t3 = mock(Transaction.class);
+        given(transactionRepository.findTaxableByUserAndCategoryAndTypeInPeriod(any(), any(), any(), any(), any()))
+                .willReturn(List.of(t1, t2, t3));
+        given(assetService.calculateRealizedProfitKrw(any())).willReturn(new BigDecimal("3000000"));
+
+        TaxSummaryResponse result = taxService.getTaxForUser(USER_ID, 2026);
+        CapitalGainsEstimate cg = result.capitalGains();
+
+        assertThat(cg.realizedProfitKrw()).isEqualByComparingTo("9000000");
+        assertThat(cg.basicDeductionKrw()).isEqualByComparingTo("2500000");
+        // 900만 - 250만 = 650만 (750만을 빼는 계좌별 방식이 아님)
+        assertThat(cg.taxableBaseKrw()).isEqualByComparingTo("6500000");
+        assertThat(cg.estimatedTaxKrw()).isEqualByComparingTo("1430000"); // 650만 × 22%
+    }
+
+    @Test
+    @DisplayName("실현손익이 기본공제보다 적으면 과세표준·세액 모두 0 (음수로 내려가지 않는다)")
+    void basicDeduction_clampedAtZero() {
+        noAccounts();
+        noDividends();
+
+        Transaction t1 = mock(Transaction.class);
+        given(transactionRepository.findTaxableByUserAndCategoryAndTypeInPeriod(any(), any(), any(), any(), any()))
+                .willReturn(List.of(t1));
+        given(assetService.calculateRealizedProfitKrw(any())).willReturn(new BigDecimal("1000000"));
+
+        CapitalGainsEstimate cg = taxService.getTaxForUser(USER_ID, 2026).capitalGains();
+
+        assertThat(cg.taxableBaseKrw()).isEqualByComparingTo("0");
+        assertThat(cg.estimatedTaxKrw()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    @DisplayName("D-232: 2천만원 기준은 계좌를 합친 뒤 한 번만 판정한다")
+    void dividendThreshold_judgedOncePerPerson() {
+        noAccounts();
+        noSells();
+
+        // 서로 다른 계좌의 해외 배당 3건 × 700만원 = 2,100만원 → 합치면 기준 초과.
+        // 계좌별로 판정하던 예전 방식이면 세 계좌 모두 "미달"로 답했다.
+        List<Dividend> threeAccounts = List.of(
+                dividendOf(AssetCategory.FOREIGN_STOCK, new BigDecimal("7000000"), null),
+                dividendOf(AssetCategory.FOREIGN_STOCK, new BigDecimal("7000000"), null),
+                dividendOf(AssetCategory.FOREIGN_STOCK, new BigDecimal("7000000"), null));
+        given(dividendRepository.findTaxableByUserInPeriod(any(), any(), any())).willReturn(threeAccounts);
+
+        DividendIncomeJudgement judgement = taxService.getTaxForUser(USER_ID, 2026).dividendIncome();
+
+        assertThat(judgement.totalDividendKrw()).isEqualByComparingTo("21000000");
+        assertThat(judgement.exceedsThreshold()).isTrue();
+        assertThat(judgement.judgement()).isEqualTo(DividendTaxJudgement.COMPREHENSIVE_FILING_POSSIBLE);
+    }
+
+    // ── 집계 대상 계좌 범위 ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("세제혜택·은행 계좌는 집계에서 빼고, 뺐다는 사실을 응답에 담는다")
+    void scope_excludesTaxAdvantagedAndBankAccounts() {
+        List<Account> accounts = List.of(
+                accountOf("키움 위탁", InstitutionType.SECURITIES, AccountDetailType.NORMAL),
+                accountOf("업비트", InstitutionType.EXCHANGE, AccountDetailType.NORMAL),
+                accountOf("미래에셋 연금저축", InstitutionType.SECURITIES, AccountDetailType.PENSION_SAVINGS),
+                accountOf("삼성 IRP", InstitutionType.SECURITIES, AccountDetailType.IRP),
+                accountOf("국민 ISA", InstitutionType.SECURITIES, AccountDetailType.ISA),
+                accountOf("국민은행 입출금", InstitutionType.BANK, AccountDetailType.NORMAL));
+        given(accountRepository.findAllByUserId(USER_ID)).willReturn(accounts);
+        noSells();
+        noDividends();
+
+        TaxScope scope = taxService.getTaxForUser(USER_ID, 2026).scope();
+
+        assertThat(scope.taxableAccountCount()).isEqualTo(2);
+        assertThat(scope.excludedAccountCount()).isEqualTo(4);
+        assertThat(scope.excludedAccountNames())
+                .containsExactly("미래에셋 연금저축", "삼성 IRP", "국민 ISA", "국민은행 입출금");
+    }
+
+    // ── 배당 세전 역환산 (R-016) — 인별로 올려도 규칙은 그대로 ─────────────
+
     @Test
     @DisplayName("R-016: 국내주식 배당(세후 순액)은 15.4% 원천징수율로 세전 역환산해 합산한다")
-    void calculateDividendIncome_grossesUpDomesticDividend() {
-        given(accountRepository.findByIdAndUserId(ACCOUNT_ID, USER_ID)).willReturn(Optional.of(mock(Account.class)));
-        given(transactionRepository.findAllByAsset_AccountIdAndAsset_CategoryAndTypeAndTradeDateBetween(
-                any(), any(), any(), any(), any())).willReturn(Collections.emptyList());
+    void dividend_grossesUpDomestic() {
+        noAccounts();
+        noSells();
 
-        // 세후 84,600원 저장 → 세전 100,000원으로 역환산되어야 함 (84,600 / (1 - 0.154))
+        // 세후 84,600원 저장 → 세전 100,000원 (84,600 / (1 - 0.154))
         Dividend domestic = dividendOf(AssetCategory.DOMESTIC_STOCK, new BigDecimal("84600"), null);
-        given(dividendRepository.findAllByAsset_AccountIdAndPayDateBetween(any(), any(), any()))
-                .willReturn(List.of(domestic));
+        given(dividendRepository.findTaxableByUserInPeriod(any(), any(), any())).willReturn(List.of(domestic));
 
-        TaxSummaryResponse result = taxService.getTax(USER_ID, ACCOUNT_ID, 2026);
+        DividendIncomeJudgement judgement = taxService.getTaxForUser(USER_ID, 2026).dividendIncome();
 
-        assertThat(result.dividendIncome().totalDividendKrw()).isEqualByComparingTo(new BigDecimal("100000"));
-        assertThat(result.dividendIncome().dividendGrossedUp()).isTrue();
+        assertThat(judgement.totalDividendKrw()).isEqualByComparingTo("100000");
+        assertThat(judgement.dividendGrossedUp()).isTrue();
     }
 
     @Test
     @DisplayName("해외주식 배당은 세전 환산 없이 fx만 곱해 원화로 합산한다")
-    void calculateDividendIncome_foreignDividendNotGrossedUp() {
-        given(accountRepository.findByIdAndUserId(ACCOUNT_ID, USER_ID)).willReturn(Optional.of(mock(Account.class)));
-        given(transactionRepository.findAllByAsset_AccountIdAndAsset_CategoryAndTypeAndTradeDateBetween(
-                any(), any(), any(), any(), any())).willReturn(Collections.emptyList());
+    void dividend_foreignNotGrossedUp() {
+        noAccounts();
+        noSells();
 
         Dividend foreign = dividendOf(AssetCategory.FOREIGN_STOCK, new BigDecimal("100"), new BigDecimal("1300"));
-        given(dividendRepository.findAllByAsset_AccountIdAndPayDateBetween(any(), any(), any()))
-                .willReturn(List.of(foreign));
+        given(dividendRepository.findTaxableByUserInPeriod(any(), any(), any())).willReturn(List.of(foreign));
 
-        TaxSummaryResponse result = taxService.getTax(USER_ID, ACCOUNT_ID, 2026);
+        DividendIncomeJudgement judgement = taxService.getTaxForUser(USER_ID, 2026).dividendIncome();
 
-        assertThat(result.dividendIncome().totalDividendKrw()).isEqualByComparingTo(new BigDecimal("130000"));
+        assertThat(judgement.totalDividendKrw()).isEqualByComparingTo("130000");
     }
 
     @Test
-    @DisplayName("배당 합계(세전 환산 후)가 2천만원을 초과하면 종합신고가능으로 판정한다")
-    void calculateDividendIncome_exceedsThreshold() {
-        given(accountRepository.findByIdAndUserId(ACCOUNT_ID, USER_ID)).willReturn(Optional.of(mock(Account.class)));
-        given(transactionRepository.findAllByAsset_AccountIdAndAsset_CategoryAndTypeAndTradeDateBetween(
-                any(), any(), any(), any(), any())).willReturn(Collections.emptyList());
+    @DisplayName("이자소득 미추적 캐비트는 항상 켜져 있다(프론트 상시 노출용)")
+    void dividend_interestNotTrackedCaveatAlwaysOn() {
+        noAccounts();
+        noSells();
+        noDividends();
 
-        // 세후 20,000,000원 저장 → 세전 약 23,640,900원으로 역환산되어 기준(2천만원) 초과
-        Dividend domestic = dividendOf(AssetCategory.DOMESTIC_STOCK, new BigDecimal("20000000"), null);
-        given(dividendRepository.findAllByAsset_AccountIdAndPayDateBetween(any(), any(), any()))
-                .willReturn(List.of(domestic));
-
-        TaxSummaryResponse result = taxService.getTax(USER_ID, ACCOUNT_ID, 2026);
-
-        assertThat(result.dividendIncome().exceedsThreshold()).isTrue();
-        assertThat(result.dividendIncome().judgement()).isEqualTo(DividendTaxJudgement.COMPREHENSIVE_FILING_POSSIBLE);
-    }
-
-    @Test
-    @DisplayName("소유하지 않은 계좌 조회 시 NotFoundException")
-    void getTax_accountNotOwned() {
-        given(accountRepository.findByIdAndUserId(ACCOUNT_ID, USER_ID)).willReturn(Optional.empty());
-
-        assertThatThrownBy(() -> taxService.getTax(USER_ID, ACCOUNT_ID, 2026))
-                .isInstanceOf(NotFoundException.class);
+        assertThat(taxService.getTaxForUser(USER_ID, 2026).dividendIncome().interestIncomeNotTracked()).isTrue();
     }
 }

@@ -2,6 +2,8 @@ package com.nowgnodeel.retirement_planner.asset.repository;
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import com.nowgnodeel.retirement_planner.asset.entity.AssetCategory;
 import com.nowgnodeel.retirement_planner.asset.entity.Transaction;
 import com.nowgnodeel.retirement_planner.asset.entity.TransactionType;
@@ -46,4 +48,40 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @EntityGraph(attributePaths = "asset")
     List<Transaction> findAllByAsset_AccountIdAndAsset_CategoryAndType(
             Long accountId, AssetCategory category, TransactionType type);
+
+    // ── M15: 인별(사용자 전체) 스코프 ─────────────────────────────────────────
+    // 수익·세금을 계좌별이 아니라 사람 단위로 집계한다. 세법상 기본공제(250만원)와
+    // 금융소득 2천만원 기준이 인별 한도이기 때문이다(계좌별로 적용하면 공제를 계좌 수만큼
+    // 중복해서 잡는다). 파생 메서드명으로 쓰면 detailType 필터까지 붙어 이름이 감당이
+    // 안 되므로 이 두 건만 @Query를 쓴다.
+
+    @EntityGraph(attributePaths = "asset")
+    @Query("SELECT t FROM Transaction t WHERE t.asset.account.user.id = :userId " +
+            "AND t.type = :type AND t.tradeDate BETWEEN :start AND :end")
+    List<Transaction> findAllByUserAndTypeInPeriod(
+            @Param("userId") Long userId, @Param("type") TransactionType type,
+            @Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    @EntityGraph(attributePaths = "asset")
+    @Query("SELECT t FROM Transaction t WHERE t.asset.account.user.id = :userId " +
+            "AND t.type = :type AND t.asset.category = :category " +
+            "AND t.tradeDate BETWEEN :start AND :end")
+    List<Transaction> findAllByUserAndCategoryAndTypeInPeriod(
+            @Param("userId") Long userId, @Param("category") AssetCategory category,
+            @Param("type") TransactionType type,
+            @Param("start") LocalDate start, @Param("end") LocalDate end);
+
+    // 과세 대상 계좌만 — 세제혜택 계좌(ISA/IRP/연금저축)는 양도소득세 대상이 아니고(과세이연·
+    // 저율분리과세), 은행 계좌는 매도 개념 자체가 없다. 이 필터를 빼면 연금저축 안의 해외 ETF
+    // 매도차익이 양도세로 잘못 잡힌다.
+    @EntityGraph(attributePaths = "asset")
+    @Query("SELECT t FROM Transaction t WHERE t.asset.account.user.id = :userId " +
+            "AND t.type = :type AND t.asset.category = :category " +
+            "AND t.asset.account.detailType = com.nowgnodeel.retirement_planner.asset.entity.AccountDetailType.NORMAL " +
+            "AND t.asset.account.institutionType <> com.nowgnodeel.retirement_planner.asset.entity.InstitutionType.BANK " +
+            "AND t.tradeDate BETWEEN :start AND :end")
+    List<Transaction> findTaxableByUserAndCategoryAndTypeInPeriod(
+            @Param("userId") Long userId, @Param("category") AssetCategory category,
+            @Param("type") TransactionType type,
+            @Param("start") LocalDate start, @Param("end") LocalDate end);
 }

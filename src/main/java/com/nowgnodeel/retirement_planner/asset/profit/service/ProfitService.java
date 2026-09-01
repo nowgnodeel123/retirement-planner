@@ -7,10 +7,8 @@ import com.nowgnodeel.retirement_planner.asset.entity.Asset;
 import com.nowgnodeel.retirement_planner.asset.entity.AssetCategory;
 import com.nowgnodeel.retirement_planner.asset.entity.Transaction;
 import com.nowgnodeel.retirement_planner.asset.entity.TransactionType;
-import com.nowgnodeel.retirement_planner.asset.repository.AccountRepository;
 import com.nowgnodeel.retirement_planner.asset.repository.TransactionRepository;
 import com.nowgnodeel.retirement_planner.asset.service.AssetService;
-import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,25 +23,27 @@ import java.util.List;
 import static com.nowgnodeel.retirement_planner.asset.profit.dto.ProfitDtos.*;
 
 /**
- * M10(D-065): 계좌 상세 수익 탭 — 기간×카테고리 필터로 실현손익+배당 조회.
+ * M10(D-065) → M15(D-232)에서 인별 스코프로 승격. 기간×카테고리 필터로 실현손익+배당 조회.
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class ProfitService {
 
-    private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
     private final DividendRepository dividendRepository;
     private final AssetService assetService;
 
-    public ProfitSummaryResponse getProfit(Long userId, Long accountId, ProfitPeriod period, AssetCategory category) {
-        accountRepository.findByIdAndUserId(accountId, userId)
-                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
-
+    /**
+     * M15(D-232): 인별 집계. "내 실현손익이 얼마인가"는 계좌가 아니라 사람 단위의 질문이라
+     * 계좌 스코프 API는 폐지했다. 세금과 달리 계좌 유형으로 걸러내지 않는다 — 연금저축·IRP의
+     * 실현손익·배당도 사용자에게는 엄연한 수익이고(과세만 이연될 뿐이다), 은행 계좌는 매도·배당이
+     * 애초에 없어 자연히 0으로 빠진다. 여기서 계좌를 빼면 "번 돈"을 축소해서 보여주게 된다.
+     */
+    public ProfitSummaryResponse getProfitForUser(Long userId, ProfitPeriod period, AssetCategory category) {
         LocalDate[] range = resolveRange(period);
-        List<Transaction> sells = fetchSells(accountId, category, range[0], range[1]);
-        List<Dividend> dividends = fetchDividends(accountId, category, range[0], range[1]);
+        List<Transaction> sells = fetchSells(userId, category, range[0], range[1]);
+        List<Dividend> dividends = fetchDividends(userId, category, range[0], range[1]);
 
         List<ProfitItem> items = new ArrayList<>();
         BigDecimal realizedTotal = BigDecimal.ZERO;
@@ -90,25 +90,24 @@ public class ProfitService {
         };
     }
 
-    private List<Transaction> fetchSells(Long accountId, AssetCategory category, LocalDate start, LocalDate end) {
-        if (start == null) {
-            return category != null
-                    ? transactionRepository.findAllByAsset_AccountIdAndAsset_CategoryAndType(accountId, category, TransactionType.SELL)
-                    : transactionRepository.findAllByAsset_AccountIdAndType(accountId, TransactionType.SELL);
-        }
+    // 기간 ALL(start=null)은 날짜 경계를 아주 넓게 잡아 같은 쿼리로 처리한다 —
+    // 계좌 스코프 때는 오버로드로 분기했지만, 인별 쿼리는 @Query라 분기가 곱절로 늘어난다.
+    private static final LocalDate MIN_DATE = LocalDate.of(1900, 1, 1);
+    private static final LocalDate MAX_DATE = LocalDate.of(2999, 12, 31);
+
+    private List<Transaction> fetchSells(Long userId, AssetCategory category, LocalDate start, LocalDate end) {
+        LocalDate from = start != null ? start : MIN_DATE;
+        LocalDate to = end != null ? end : MAX_DATE;
         return category != null
-                ? transactionRepository.findAllByAsset_AccountIdAndAsset_CategoryAndTypeAndTradeDateBetween(accountId, category, TransactionType.SELL, start, end)
-                : transactionRepository.findAllByAsset_AccountIdAndTypeAndTradeDateBetween(accountId, TransactionType.SELL, start, end);
+                ? transactionRepository.findAllByUserAndCategoryAndTypeInPeriod(userId, category, TransactionType.SELL, from, to)
+                : transactionRepository.findAllByUserAndTypeInPeriod(userId, TransactionType.SELL, from, to);
     }
 
-    private List<Dividend> fetchDividends(Long accountId, AssetCategory category, LocalDate start, LocalDate end) {
-        if (start == null) {
-            return category != null
-                    ? dividendRepository.findAllByAsset_AccountIdAndAsset_Category(accountId, category)
-                    : dividendRepository.findAllByAsset_AccountId(accountId);
-        }
+    private List<Dividend> fetchDividends(Long userId, AssetCategory category, LocalDate start, LocalDate end) {
+        LocalDate from = start != null ? start : MIN_DATE;
+        LocalDate to = end != null ? end : MAX_DATE;
         return category != null
-                ? dividendRepository.findAllByAsset_AccountIdAndAsset_CategoryAndPayDateBetween(accountId, category, start, end)
-                : dividendRepository.findAllByAsset_AccountIdAndPayDateBetween(accountId, start, end);
+                ? dividendRepository.findAllByUserAndCategoryInPeriod(userId, category, from, to)
+                : dividendRepository.findAllByUserInPeriod(userId, from, to);
     }
 }
