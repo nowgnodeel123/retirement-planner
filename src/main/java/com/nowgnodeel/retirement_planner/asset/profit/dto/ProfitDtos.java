@@ -19,7 +19,16 @@ public class ProfitDtos {
             BigDecimal totalProfitKrw,    // realizedProfitKrw + dividendKrw
             int sellCount,
             int dividendCount,
-            List<ProfitItem> items        // 최신순, 실현손익/배당 통합
+            List<ProfitItem> items,       // 최신순, 실현손익/배당 통합
+            // D-237: 기간 경계를 화면에 그대로 보여주기 위해 서버가 계산한 범위를 함께 내린다.
+            // 프론트에서 "이번 주/이번 달"을 다시 계산하면 기간 의미가 두 곳에 생겨 어긋난다.
+            // ALL이면 둘 다 null.
+            LocalDate rangeStart,
+            LocalDate rangeEnd,
+            // 기간과 무관한 전체 내역 건수. 선택한 기간 밖에 내역이 더 있는지 판단하는 데 쓴다 —
+            // 이게 없으면 "이번 달"이 하루뿐인 매월 1일 같은 날 종목이 조용히 사라져
+            // 사용자에게는 계산 오류로 보인다(실제 제보 발생).
+            int allTimeItemCount
     ) {}
 
     public record ProfitItem(

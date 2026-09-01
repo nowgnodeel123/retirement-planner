@@ -42,6 +42,11 @@ public interface DividendRepository extends JpaRepository<Dividend, Long> {
     @EntityGraph(attributePaths = "asset")
     List<Dividend> findAllByAsset_AccountIdAndAsset_Category(Long accountId, AssetCategory category);
 
+    // 선택한 기간 밖에도 내역이 있는지 알려주기 위한 전체 건수(D-237).
+    long countByAsset_Account_User_Id(Long userId);
+
+    long countByAsset_Account_User_IdAndAsset_Category(Long userId, AssetCategory category);
+
     // ── M15: 인별(사용자 전체) 스코프 ─────────────────────────────────────────
     @EntityGraph(attributePaths = "asset")
     @Query("SELECT d FROM Dividend d WHERE d.asset.account.user.id = :userId " +

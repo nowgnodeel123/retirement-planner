@@ -72,9 +72,17 @@ public class ProfitService {
 
         items.sort(Comparator.comparing(ProfitItem::date).reversed());
 
+        long allTimeSells = category != null
+                ? transactionRepository.countByAsset_Account_User_IdAndAsset_CategoryAndType(userId, category, TransactionType.SELL)
+                : transactionRepository.countByAsset_Account_User_IdAndType(userId, TransactionType.SELL);
+        long allTimeDividends = category != null
+                ? dividendRepository.countByAsset_Account_User_IdAndAsset_Category(userId, category)
+                : dividendRepository.countByAsset_Account_User_Id(userId);
+
         return new ProfitSummaryResponse(
                 realizedTotal, dividendTotal, realizedTotal.add(dividendTotal),
-                sells.size(), dividends.size(), items);
+                sells.size(), dividends.size(), items,
+                range[0], range[1], (int) (allTimeSells + allTimeDividends));
     }
 
     // 일/주/월/년/전체 → LocalDate(start,end). 달력 기준(M9 "이번 달" 관례의 일반화).

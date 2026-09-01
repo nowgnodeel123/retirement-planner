@@ -49,6 +49,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     List<Transaction> findAllByAsset_AccountIdAndAsset_CategoryAndType(
             Long accountId, AssetCategory category, TransactionType type);
 
+    // 선택한 기간 밖에도 내역이 있는지 알려주기 위한 전체 건수(D-237).
+    long countByAsset_Account_User_IdAndType(Long userId, TransactionType type);
+
+    long countByAsset_Account_User_IdAndAsset_CategoryAndType(
+            Long userId, AssetCategory category, TransactionType type);
+
     // ── M15: 인별(사용자 전체) 스코프 ─────────────────────────────────────────
     // 수익·세금을 계좌별이 아니라 사람 단위로 집계한다. 세법상 기본공제(250만원)와
     // 금융소득 2천만원 기준이 인별 한도이기 때문이다(계좌별로 적용하면 공제를 계좌 수만큼
