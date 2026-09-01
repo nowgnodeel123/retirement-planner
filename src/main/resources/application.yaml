@@ -50,6 +50,10 @@ jwt:
   refresh-token-validity-ms: 1209600000  # 14일
 
 app:
+  # 실기기 QA(폰에서 맥 LAN IP로 접속)나 배포 시 origin을 추가하려면 환경변수로 쉼표 구분해 넘긴다.
+  # 예: APP_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://192.168.0.4:3000
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000}
   share-url: ${APP_SHARE_URL:https://retirement-planner.vercel.app}
   frontend-callback-url: ${FRONTEND_CALLBACK_URL:http://localhost:3000/auth/callback}
   national-pension:
