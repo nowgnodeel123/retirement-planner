@@ -14,8 +14,14 @@ import java.util.Optional;
 
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
-    // 매도 검증(D-057)·평단 계산(D-050) 모두 이 순서 그대로 사용
+    // 매도 검증(D-057)용 순보유수량 계산. 합산만 하므로 순서에 의존하지 않는다.
     List<Transaction> findAllByAssetIdOrderByTradeDateAsc(Long assetId);
+
+    // 이동평균법 재생용. 평단은 거래를 시간순으로 되짚어 계산하므로 순서가 결과를 바꾼다 —
+    // tradeDate는 날짜 단위(시각 없음)라 같은 날 매수·매도가 섞이면 동점이 생기고,
+    // 그때 어느 쪽을 먼저 보느냐에 따라 취득원가가 달라진다. 입력 순서(id asc)를 2차
+    // 기준으로 고정해 같은 데이터가 항상 같은 값을 내도록 한다.
+    List<Transaction> findAllByAssetIdOrderByTradeDateAscIdAsc(Long assetId);
 
     // M6: 거래내역 화면은 최신순 표시가 자연스러움.
     // tradeDate는 날짜 단위(시각 없음)라 같은 날 여러 건이면 동점이 발생 —
