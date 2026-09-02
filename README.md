@@ -90,17 +90,35 @@ CREATE DATABASE retirement_planner;
 
 ### 2. 환경변수 설정
 
-Flyway가 스키마를 자동으로 생성하므로 DB만 비어있는 상태로 준비하면 됩니다. 필수 환경변수는 `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`, `KAKAO_CLIENT_ID`, `JWT_SECRET`, `PII_ENCRYPTION_KEY`, `DATA_GO_KR_API_KEY`, `FINNHUB_API_KEY`, `KOREAEXIM_API_KEY`이며, IntelliJ 사용 시 Run/Debug Configurations → Environment variables에 등록합니다.
+Flyway가 스키마를 자동으로 생성하므로 DB만 비어있는 상태로 준비하면 됩니다.
+
+로컬 개발 설정은 템플릿을 복사해 채웁니다.
+
+```bash
+cp config/application-local.yaml.example config/application-local.yaml
+```
+
+이 파일은 `.gitignore`로 막혀 있습니다(`/config/*`, 템플릿만 예외). `src/main/resources/`가 아니라 프로젝트 루트 `config/`에 두는 이유는, resources 안에 있으면 JAR에 패키징돼 배포 산출물에 시크릿이 딸려 들어가기 때문입니다.
+
+값이 없으면 기동이 실패하는 필수 항목은 `jwt.secret`, `pii.encryption-key`, `spring.security.oauth2.client.registration.kakao.client-id`, `price-api.data-go-kr.key`, `price-api.finnhub.key`, `price-api.koreaexim.key` 여섯 개입니다. 나머지(`DB_URL`, `SENS_*`, `OPENDART_API_KEY` 등)는 `application.yaml`에 기본값이 있어 로컬에서는 생략할 수 있습니다.
+
+> **`pii.encryption-key`는 잃어버리면 복구할 수 없습니다.** `users` 테이블의 name/phone/birth_date는 이 키로 암호화(AES-256-GCM)돼 `enc:v1:...` 형태로 저장되므로, 키가 바뀌면 기존 데이터를 복호화할 수 없습니다.
+
+운영 환경(Railway)은 이 파일을 쓰지 않고 환경변수로 주입합니다 — 위 프로퍼티에 대응하는 `JWT_SECRET`, `PII_ENCRYPTION_KEY`, `KAKAO_CLIENT_ID`, `DATA_GO_KR_API_KEY`, `FINNHUB_API_KEY`, `KOREAEXIM_API_KEY`, 그리고 **`APP_CORS_ALLOWED_ORIGINS`(Vercel 도메인, 빠뜨리면 프론트 전 요청이 CORS로 막힘)**.
 
 `DATA_GO_KR_API_KEY`는 data.go.kr에서 **서비스별로 활용신청**이 필요합니다 — KRX상장종목정보, 주식시세정보, 그리고 ETF를 위한 **증권상품시세정보** 세 가지. ETF 서비스를 신청하지 않으면 연금저축·IRP 화면에서 ETF를 찾을 수 없고, 기동 로그로 그 상태를 알려줍니다. 신청 승인 후 `POST /api/admin/etfs/refresh`를 한 번 호출하면 전체 ETF가 적재됩니다.
 
 ### 3. 실행
 
 ```bash
-./gradlew bootRun
+SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 ```
 
-`http://localhost:8080` 에서 실행됩니다.
+`http://localhost:8080` 에서 실행됩니다. 테스트도 같은 프로파일로 실행합니다 — 일부 테스트가 Spring 컨텍스트를 띄우므로 설정이 없으면 실패합니다.
+
+```bash
+SPRING_PROFILES_ACTIVE=local ./gradlew test
+```
 
 <br>
 

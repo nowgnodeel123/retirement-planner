@@ -1,0 +1,45 @@
+# 로컬 개발 설정 템플릿. 이 파일을 application-local.yaml 로 복사해 값을 채운다.
+# 사본(application-local.yaml)은 커밋 금지 — .gitignore의 /config/* 로 막혀 있다.
+#
+# 이 파일은 src/main/resources/application.yaml 의 ${ENV} 자리를 프로퍼티로 직접
+# 덮어쓴다. 그래서 환경변수 이름이 아니라 yaml 경로로 적는다.
+#
+# 실행: SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+#       (IntelliJ는 Run Configuration 의 Active profiles 에 local)
+#
+# src/main/resources/ 가 아니라 프로젝트 루트 config/ 에 두는 이유:
+# resources 안에 있으면 JAR 에 패키징돼 배포 산출물에 시크릿이 딸려 들어간다.
+# 루트 config/ 는 Spring 이 기본 탐색 경로로 잡으면서 JAR 에는 들어가지 않는다.
+#
+# 운영(Railway)은 이 파일을 쓰지 않는다 — 환경변수로 주입한다.
+# 새 값을 추가하면 config/application-local.yaml.example 에도 키를 넣을 것.
+
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            client-id: ''
+            client-secret: ''
+
+jwt:
+  secret: ''
+
+# 이 키를 잃으면 users 테이블의 name/phone/birth_date(enc:v1:...)를 복호화할 수 없다.
+pii:
+  encryption-key: ''
+
+price-api:
+  data-go-kr:
+    key: ''
+  finnhub:
+    key: ''
+  koreaexim:
+    key: ''
+
+app:
+  cors:
+    # 시크릿 아님. 빈 값으로 두면 application.yaml 의 기본값을 덮어써 CORS 가 깨진다.
+    # 실기기 QA 시 맥 LAN IP 를 콤마로 덧붙인다(ipconfig getifaddr en0).
+    allowed-origins: http://localhost:3000
