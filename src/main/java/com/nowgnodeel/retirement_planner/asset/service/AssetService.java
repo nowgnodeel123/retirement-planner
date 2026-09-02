@@ -368,17 +368,52 @@ public class AssetService {
     }
 
     /**
-     * D-107 실현손익 공식의 단일 출처: 매도 1건당 (매도단가-평단)×매도수량, 해외주식은
-     * 매도 시점 저장된 fx로 환산(D-104, 재조회 없음). asset/profit(M10)과 tax(M11)가
-     * 이 메서드를 함께 재사용해 두 화면의 실현손익 수치가 갈라지지 않도록 한다(R-015).
+     * 해외주식의 원화 취득단가. 매수 1건마다 그 거래에 저장된 fx로 환산해 총평균을 낸다
+     * (D-104, 재조회 없음 — 평단 자체와 같은 총평균법이라 두 값의 기준이 어긋나지 않는다).
+     * 화면에 보이는 외화 평단은 {@link #calculateAveragePrice}가 그대로 담당한다.
+     *
+     * fx가 없는 매수 건은 fallbackFx로 환산한다. 해외주식은 매수·매도·정정 모두 fx를
+     * 필수로 검증하므로(D-063) 실제로는 나오지 않지만, 만약 있다면 외화 금액을 원화로
+     * 오독하는 것보다 매도일 환율로 근사하는 편이 피해가 작다.
+     */
+    private BigDecimal calculateAveragePriceKrw(Asset asset, BigDecimal fallbackFx) {
+        List<Transaction> txs = transactionRepository.findAllByAssetIdOrderByTradeDateAsc(asset.getId());
+        BigDecimal buyQty = BigDecimal.ZERO;
+        BigDecimal buyAmountKrw = BigDecimal.ZERO;
+        for (Transaction tx : txs) {
+            if (tx.getType() == TransactionType.BUY) {
+                BigDecimal fx = tx.getFx() != null ? tx.getFx() : fallbackFx;
+                buyQty = buyQty.add(tx.getQuantity());
+                buyAmountKrw = buyAmountKrw.add(tx.getQuantity().multiply(tx.getUnitPrice()).multiply(fx));
+            }
+        }
+        return buyQty.compareTo(BigDecimal.ZERO) > 0
+                ? buyAmountKrw.divide(buyQty, 4, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+    }
+
+    /**
+     * D-107 실현손익 공식의 단일 출처: 매도 1건당 (매도금액 - 취득원가), 둘 다 원화 기준.
+     * asset/profit(M10)과 tax(M11)가 이 메서드를 함께 재사용해 두 화면의 실현손익 수치가
+     * 갈라지지 않도록 한다(R-015).
+     *
+     * 해외주식은 매수·매도 각각 그 거래에 저장된 fx로 환산한다 — 환차손익이 실현손익에
+     * 포함되어야 하기 때문이다. 이전에는 양쪽에 매도일 fx 하나만 곱해 환차손익이 통째로
+     * 빠졌고(매수 fx가 DB에 있는데도 쓰지 않아 D-104를 절반만 지킨 상태였다), 그 값이
+     * D-109로 세금 탭 양도소득세 추정까지 흘러갔다.
+     *
+     * 국내주식(fx == null)은 계산 경로가 이전과 완전히 동일하다.
      */
     public BigDecimal calculateRealizedProfitKrw(Transaction sellTx) {
-        BigDecimal avgPrice = calculateAveragePrice(sellTx.getAsset());
-        BigDecimal profit = sellTx.getUnitPrice().subtract(avgPrice).multiply(sellTx.getQuantity());
-        if (sellTx.getFx() != null) {
-            profit = profit.multiply(sellTx.getFx());
+        BigDecimal quantity = sellTx.getQuantity();
+        if (sellTx.getFx() == null) {
+            BigDecimal avgPrice = calculateAveragePrice(sellTx.getAsset());
+            return sellTx.getUnitPrice().subtract(avgPrice).multiply(quantity);
         }
-        return profit;
+        BigDecimal sellFx = sellTx.getFx();
+        BigDecimal proceedsKrw = sellTx.getUnitPrice().multiply(sellFx).multiply(quantity);
+        BigDecimal costKrw = calculateAveragePriceKrw(sellTx.getAsset(), sellFx).multiply(quantity);
+        return proceedsKrw.subtract(costKrw);
     }
 
     // D-050: 파생값 계산 + M4: 현재가/평가금액/손익률 + M5: 해외주식 원화환산(D-063)
