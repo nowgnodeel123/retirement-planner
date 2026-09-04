@@ -26,10 +26,23 @@ public class TaxDtos {
      * 안 잡히지?"라는 의문이 생긴다 — 제외 사실을 숨기면 사용자가 앱을 틀렸다고 여긴다.
      */
     public record TaxScope(
-            int taxableAccountCount,   // 집계에 포함된 계좌 수(일반 증권·거래소)
-            int excludedAccountCount,  // 세제혜택(ISA/IRP/연금저축)이라 제외한 계좌 수
-            List<String> excludedAccountNames
+            int taxableAccountCount,   // 집계에 포함된 계좌 수(일반 증권계좌)
+            int excludedAccountCount,
+            List<ExcludedAccount> excludedAccounts
     ) {}
+
+    /**
+     * 제외 사유를 계좌마다 따로 담는 이유: 예전엔 이름만 나열하고 화면이 전부
+     * "세제혜택 계좌"라고 뭉뚱그렸는데, 거래소 계좌는 세제혜택 계좌가 아니라 설명이 틀렸다.
+     */
+    public record ExcludedAccount(String name, ExclusionReason reason) {}
+
+    public enum ExclusionReason {
+        /** ISA·IRP·연금저축 — 과세이연·저율분리과세라 양도소득세·금융소득 합산 대상이 아니다. */
+        TAX_ADVANTAGED,
+        /** 거래소 계좌 — 암호화폐만 담을 수 있고, 이 앱은 가상자산 세금을 추정하지 않는다. */
+        CRYPTO_ONLY
+    }
 
     /**
      * D-064: 해외주식 연간 실현손익 기준 양도소득세 "추정치"만 제공. 국내주식은 대상에서 완전 제외.
@@ -49,9 +62,13 @@ public class TaxDtos {
      * D-068: 실제 종합소득세액은 계산하지 않고, 금융소득 2천만원 기준 분리과세 종결 여부만 판정한다.
      * interestIncomeNotTracked: 이 앱은 예적금 이자를 추적하지 않아 실제 금융소득이
      * totalDividendKrw보다 클 수 있다는 캐비트 — 프론트에 상시 노출 필요.
-     * R-016 보완: totalDividendKrw는 국내주식 배당(저장값=세후 순액)을 원천징수율 15.4%로
-     * 세전 역환산한 뒤 해외주식(저장값=세전 USD→원화 환산)과 합산한 값이다. 실제 세전 금액과
-     * 다를 수 있는 추정치이므로 dividendGrossedUp을 프론트에서 함께 안내한다.
+     * R-016 보완: 배당은 국내·해외 모두 실수령액(세후)으로 입력받는다. 국내주식만 원천징수율
+     * 15.4%로 세전 역환산한 뒤 합산한다.
+     *
+     * 해외주식은 역환산하지 않는다 — 원천징수율이 국가마다 달라(미국 15%, 중국 10%,
+     * 일본 15.315%) 하나로 정할 수 없고, 임의 추정은 세금계산기 완전판 금지 원칙(R-009)에
+     * 걸린다. 대신 그만큼 세전 합계가 실제보다 작게 잡힌다는 사실을 화면에 밝힌다
+     * (foreignDividendCount > 0일 때). 기준 미달로 판정됐더라도 실제로는 넘을 수 있다.
      */
     public record DividendIncomeJudgement(
             BigDecimal totalDividendKrw,    // 연간 배당 합 추정(세전 환산치, 국내는 15.4% 역환산 적용)
@@ -60,6 +77,7 @@ public class TaxDtos {
             DividendTaxJudgement judgement,
             boolean interestIncomeNotTracked, // 항상 true — 이자소득 미추적 캐비트
             boolean dividendGrossedUp,        // 항상 true — 국내주식 배당 세전 역환산 적용 캐비트(R-016)
+            int foreignDividendCount,         // >0이면 "해외분은 세전 환산 안 됨" 안내를 띄운다
             int dividendCount
     ) {}
 }

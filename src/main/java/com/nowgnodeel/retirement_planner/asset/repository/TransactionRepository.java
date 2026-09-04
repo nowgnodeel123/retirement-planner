@@ -67,14 +67,14 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     // 중복해서 잡는다). 파생 메서드명으로 쓰면 detailType 필터까지 붙어 이름이 감당이
     // 안 되므로 이 두 건만 @Query를 쓴다.
 
-    @EntityGraph(attributePaths = "asset")
+    @EntityGraph(attributePaths = {"asset", "asset.account"})
     @Query("SELECT t FROM Transaction t WHERE t.asset.account.user.id = :userId " +
             "AND t.type = :type AND t.tradeDate BETWEEN :start AND :end")
     List<Transaction> findAllByUserAndTypeInPeriod(
             @Param("userId") Long userId, @Param("type") TransactionType type,
             @Param("start") LocalDate start, @Param("end") LocalDate end);
 
-    @EntityGraph(attributePaths = "asset")
+    @EntityGraph(attributePaths = {"asset", "asset.account"})
     @Query("SELECT t FROM Transaction t WHERE t.asset.account.user.id = :userId " +
             "AND t.type = :type AND t.asset.category = :category " +
             "AND t.tradeDate BETWEEN :start AND :end")
@@ -85,11 +85,13 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     // 과세 대상 계좌만 — 세제혜택 계좌(ISA/IRP/연금저축)는 양도소득세 대상이 아니다
     // (과세이연·저율분리과세). 이 필터를 빼면 연금저축 안의 해외 ETF 매도차익이
-    // 양도세로 잘못 잡힌다.
+    // 양도세로 잘못 잡힌다. 거래소 계좌도 뺀다 — 암호화폐만 담기고 이 앱은 가상자산
+    // 세금을 추정하지 않아, TaxService.isTaxScoped가 세는 계좌와 기준이 같아야 한다.
     @EntityGraph(attributePaths = "asset")
     @Query("SELECT t FROM Transaction t WHERE t.asset.account.user.id = :userId " +
             "AND t.type = :type AND t.asset.category = :category " +
             "AND t.asset.account.detailType = com.nowgnodeel.retirement_planner.asset.entity.AccountDetailType.NORMAL " +
+            "AND t.asset.account.institutionType <> com.nowgnodeel.retirement_planner.asset.entity.InstitutionType.EXCHANGE " +
             "AND t.tradeDate BETWEEN :start AND :end")
     List<Transaction> findTaxableByUserAndCategoryAndTypeInPeriod(
             @Param("userId") Long userId, @Param("category") AssetCategory category,

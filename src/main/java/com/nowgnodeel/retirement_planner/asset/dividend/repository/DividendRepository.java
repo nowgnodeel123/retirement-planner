@@ -48,13 +48,13 @@ public interface DividendRepository extends JpaRepository<Dividend, Long> {
     long countByAsset_Account_User_IdAndAsset_Category(Long userId, AssetCategory category);
 
     // ── M15: 인별(사용자 전체) 스코프 ─────────────────────────────────────────
-    @EntityGraph(attributePaths = "asset")
+    @EntityGraph(attributePaths = {"asset", "asset.account"})
     @Query("SELECT d FROM Dividend d WHERE d.asset.account.user.id = :userId " +
             "AND d.payDate BETWEEN :start AND :end")
     List<Dividend> findAllByUserInPeriod(
             @Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);
 
-    @EntityGraph(attributePaths = "asset")
+    @EntityGraph(attributePaths = {"asset", "asset.account"})
     @Query("SELECT d FROM Dividend d WHERE d.asset.account.user.id = :userId " +
             "AND d.asset.category = :category AND d.payDate BETWEEN :start AND :end")
     List<Dividend> findAllByUserAndCategoryInPeriod(
@@ -67,6 +67,7 @@ public interface DividendRepository extends JpaRepository<Dividend, Long> {
     @EntityGraph(attributePaths = "asset")
     @Query("SELECT d FROM Dividend d WHERE d.asset.account.user.id = :userId " +
             "AND d.asset.account.detailType = com.nowgnodeel.retirement_planner.asset.entity.AccountDetailType.NORMAL " +
+            "AND d.asset.account.institutionType <> com.nowgnodeel.retirement_planner.asset.entity.InstitutionType.EXCHANGE " +
             "AND d.payDate BETWEEN :start AND :end")
     List<Dividend> findTaxableByUserInPeriod(
             @Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);

@@ -37,8 +37,8 @@ public class ProfitService {
     /**
      * M15(D-232): 인별 집계. "내 실현손익이 얼마인가"는 계좌가 아니라 사람 단위의 질문이라
      * 계좌 스코프 API는 폐지했다. 세금과 달리 계좌 유형으로 걸러내지 않는다 — 연금저축·IRP의
-     * 실현손익·배당도 사용자에게는 엄연한 수익이다(과세만 이연될 뿐이다). 여기서 계좌를 빼면
-     * 애초에 없어 자연히 0으로 빠진다. 여기서 계좌를 빼면 "번 돈"을 축소해서 보여주게 된다.
+     * 실현손익·배당도 사용자에게는 엄연한 수익이다(과세만 이연될 뿐이다).
+     * 여기서 계좌를 빼면 "번 돈"을 축소해서 보여주게 된다.
      */
     public ProfitSummaryResponse getProfitForUser(Long userId, ProfitPeriod period, AssetCategory category) {
         LocalDate[] range = resolveRange(period);
@@ -56,6 +56,7 @@ public class ProfitService {
 
             items.add(new ProfitItem(
                     "REALIZED_SELL", tx.getId(), asset.getId(), asset.getName(),
+                    asset.getAccount().getName(),
                     asset.getCategory().name(), tx.getTradeDate(), profit));
         }
 
@@ -67,6 +68,7 @@ public class ProfitService {
 
             items.add(new ProfitItem(
                     "DIVIDEND", d.getId(), asset.getId(), asset.getName(),
+                    asset.getAccount().getName(),
                     asset.getCategory().name(), d.getPayDate(), amount));
         }
 

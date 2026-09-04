@@ -36,6 +36,10 @@ public class ProfitDtos {
             Long sourceId,        // transactionId 또는 dividendId
             Long assetId,
             String assetName,
+            // M15에서 인별 집계로 올린 뒤 필요해졌다. 같은 종목을 여러 계좌에서 팔면
+            // 화면에 "APPLE INC +75만원"이 나란히 두 줄 떠서 중복 표시로 읽힌다
+            // (일반 계좌와 ISA처럼 세금 취급이 다른 계좌면 더 헷갈린다).
+            String accountName,
             String category,      // DOMESTIC_STOCK | FOREIGN_STOCK | CRYPTO
             LocalDate date,       // tradeDate 또는 payDate
             BigDecimal amountKrw  // 실현손익(+/-) 또는 배당금액(항상 +), 원화환산

@@ -61,23 +61,37 @@ public class TaxService {
         LocalDate end = LocalDate.of(year, 12, 31);
 
         List<Account> accounts = accountRepository.findAllByUserId(userId);
-        List<String> excludedNames = accounts.stream()
+        List<ExcludedAccount> excluded = accounts.stream()
                 .filter(a -> !isTaxScoped(a))
-                .map(Account::getName)
+                .map(a -> new ExcludedAccount(a.getName(), exclusionReasonOf(a)))
                 .toList();
-        int taxableCount = accounts.size() - excludedNames.size();
+        int taxableCount = accounts.size() - excluded.size();
 
         return new TaxSummaryResponse(
                 year,
                 calculateCapitalGainsForUser(userId, start, end),
                 calculateDividendIncomeForUser(userId, start, end),
-                new TaxScope(taxableCount, excludedNames.size(), excludedNames)
+                new TaxScope(taxableCount, excluded.size(), excluded)
         );
     }
 
-    /** 위 쿼리들의 detailType 조건과 반드시 같은 규칙이어야 한다. */
+    /**
+     * 위 쿼리들의 detailType·institutionType 조건과 반드시 같은 규칙이어야 한다.
+     *
+     * 거래소 계좌를 뺀 이유: 담을 수 있는 자산이 암호화폐뿐인데 이 앱은 가상자산 세금을
+     * 추정하지 않는다. 그런데도 "과세 대상"으로 세고 있어서, 화면이 "일반 계좌 2곳을
+     * 합쳐서 계산했어요"라고 말하면서 정작 그 계좌의 매도차익은 한 푼도 반영하지 않는
+     * 상태였다. 세는 쪽과 계산하는 쪽이 어긋나면 사용자는 계산이 된 줄로 읽는다.
+     */
     private boolean isTaxScoped(Account account) {
-        return account.getDetailType() == AccountDetailType.NORMAL;
+        return account.getDetailType() == AccountDetailType.NORMAL
+                && account.getInstitutionType() != InstitutionType.EXCHANGE;
+    }
+
+    private ExclusionReason exclusionReasonOf(Account account) {
+        return account.getDetailType() != AccountDetailType.NORMAL
+                ? ExclusionReason.TAX_ADVANTAGED
+                : ExclusionReason.CRYPTO_ONLY;
     }
 
     // D-064: 해외주식만 대상, 국내주식은 조회 자체를 하지 않는다.
@@ -113,10 +127,15 @@ public class TaxService {
     // R-016: 국내주식 배당(세후 순액)을 세전으로 역환산한 뒤 합산해야 2천만원 기준과 같은 기준(세전)으로 비교된다.
     private DividendIncomeJudgement judgeDividends(List<Dividend> dividends) {
         BigDecimal totalDividend = BigDecimal.ZERO;
+        int foreignCount = 0;
         for (Dividend d : dividends) {
             BigDecimal amount = d.getFx() != null ? d.getAmount().multiply(d.getFx()) : d.getAmount();
             if (d.getAsset().getCategory() == AssetCategory.DOMESTIC_STOCK) {
                 amount = amount.divide(BigDecimal.ONE.subtract(DOMESTIC_DIVIDEND_WITHHOLDING_RATE), 0, RoundingMode.HALF_UP);
+            } else {
+                // 해외분은 역환산하지 않는다(원천징수율이 국가마다 달라 추정 금지, R-009).
+                // 그만큼 합계가 실제 세전보다 작다는 사실을 화면이 밝히도록 건수를 세어 보낸다.
+                foreignCount++;
             }
             totalDividend = totalDividend.add(amount);
         }
@@ -127,6 +146,7 @@ public class TaxService {
                 : DividendTaxJudgement.SEPARATE_TAXATION_FINAL;
 
         return new DividendIncomeJudgement(
-                totalDividend, DIVIDEND_INCOME_THRESHOLD, exceeds, judgement, true, true, dividends.size());
+                totalDividend, DIVIDEND_INCOME_THRESHOLD, exceeds, judgement,
+                true, true, foreignCount, dividends.size());
     }
 }

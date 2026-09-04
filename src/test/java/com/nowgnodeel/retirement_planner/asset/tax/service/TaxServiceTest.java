@@ -24,9 +24,11 @@ import java.util.List;
 
 import static com.nowgnodeel.retirement_planner.asset.tax.dto.TaxDtos.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
@@ -55,11 +57,13 @@ class TaxServiceTest {
         return dividend;
     }
 
-    // 은행 계좌 유형이 없어진 뒤로(V17) 집계 범위는 detailType 하나로만 갈린다.
+    // 집계 범위는 detailType(세제혜택 여부)과 institutionType(거래소 여부)으로 갈린다.
     private Account accountOf(String name, InstitutionType institution, AccountDetailType detail) {
         Account account = mock(Account.class);
         when(account.getDetailType()).thenReturn(detail);
-        if (detail != AccountDetailType.NORMAL) {
+        lenient().when(account.getInstitutionType()).thenReturn(institution);
+        boolean excluded = detail != AccountDetailType.NORMAL || institution == InstitutionType.EXCHANGE;
+        if (excluded) {
             when(account.getName()).thenReturn(name);
         }
         return account;
@@ -147,8 +151,8 @@ class TaxServiceTest {
     // ── 집계 대상 계좌 범위 ────────────────────────────────────────────────
 
     @Test
-    @DisplayName("세제혜택 계좌는 집계에서 빼고, 뺐다는 사실을 응답에 담는다")
-    void scope_excludesTaxAdvantagedAccounts() {
+    @DisplayName("세제혜택 계좌와 거래소 계좌를 빼고, 뺀 이유까지 응답에 담는다")
+    void scope_excludesTaxAdvantagedAndExchangeAccounts() {
         List<Account> accounts = List.of(
                 accountOf("키움 위탁", InstitutionType.SECURITIES, AccountDetailType.NORMAL),
                 accountOf("업비트", InstitutionType.EXCHANGE, AccountDetailType.NORMAL),
@@ -161,10 +165,17 @@ class TaxServiceTest {
 
         TaxScope scope = taxService.getTaxForUser(USER_ID, 2026).scope();
 
-        assertThat(scope.taxableAccountCount()).isEqualTo(2);
-        assertThat(scope.excludedAccountCount()).isEqualTo(3);
-        assertThat(scope.excludedAccountNames())
-                .containsExactly("미래에셋 연금저축", "삼성 IRP", "국민 ISA");
+        // 업비트는 암호화폐만 담기고 이 앱은 가상자산 세금을 추정하지 않는다 —
+        // 과세 대상으로 세면 화면이 "계산했다"고 말하면서 실제로는 한 푼도 안 넣게 된다.
+        assertThat(scope.taxableAccountCount()).isEqualTo(1);
+        assertThat(scope.excludedAccountCount()).isEqualTo(4);
+        assertThat(scope.excludedAccounts())
+                .extracting(ExcludedAccount::name, ExcludedAccount::reason)
+                .containsExactly(
+                        tuple("업비트", ExclusionReason.CRYPTO_ONLY),
+                        tuple("미래에셋 연금저축", ExclusionReason.TAX_ADVANTAGED),
+                        tuple("삼성 IRP", ExclusionReason.TAX_ADVANTAGED),
+                        tuple("국민 ISA", ExclusionReason.TAX_ADVANTAGED));
     }
 
     // ── 배당 세전 역환산 (R-016) — 인별로 올려도 규칙은 그대로 ─────────────
@@ -183,6 +194,46 @@ class TaxServiceTest {
 
         assertThat(judgement.totalDividendKrw()).isEqualByComparingTo("100000");
         assertThat(judgement.dividendGrossedUp()).isTrue();
+    }
+
+    @Test
+    @DisplayName("해외주식 배당은 세전 역환산하지 않고, 그 사실을 건수로 알린다")
+    void dividend_doesNotGrossUpForeign() {
+        noAccounts();
+        noSells();
+
+        // $100 × 1,300 = 130,000원. 미국 원천징수 15%를 되돌리면 152,941원이지만
+        // 원천징수율이 국가마다 달라 추정하지 않는다(R-009). 대신 화면이 밝히도록
+        // 해외 배당 건수를 함께 내려준다.
+        Dividend foreign = dividendOf(
+                AssetCategory.FOREIGN_STOCK, new BigDecimal("100"), new BigDecimal("1300"));
+        given(dividendRepository.findTaxableByUserInPeriod(any(), any(), any()))
+                .willReturn(List.of(foreign));
+
+        DividendIncomeJudgement judgement = taxService.getTaxForUser(USER_ID, 2026).dividendIncome();
+
+        assertThat(judgement.totalDividendKrw()).isEqualByComparingTo("130000");
+        assertThat(judgement.foreignDividendCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("국내·해외가 섞이면 국내분만 역환산해 합산한다")
+    void dividend_mixedDomesticAndForeign() {
+        noAccounts();
+        noSells();
+
+        Dividend domestic = dividendOf(AssetCategory.DOMESTIC_STOCK, new BigDecimal("84600"), null);
+        Dividend foreign = dividendOf(
+                AssetCategory.FOREIGN_STOCK, new BigDecimal("100"), new BigDecimal("1300"));
+        given(dividendRepository.findTaxableByUserInPeriod(any(), any(), any()))
+                .willReturn(List.of(domestic, foreign));
+
+        DividendIncomeJudgement judgement = taxService.getTaxForUser(USER_ID, 2026).dividendIncome();
+
+        // 100,000(역환산) + 130,000(원값) = 230,000
+        assertThat(judgement.totalDividendKrw()).isEqualByComparingTo("230000");
+        assertThat(judgement.foreignDividendCount()).isEqualTo(1);
+        assertThat(judgement.dividendCount()).isEqualTo(2);
     }
 
     @Test

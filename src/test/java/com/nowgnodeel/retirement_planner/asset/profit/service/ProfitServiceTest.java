@@ -2,6 +2,7 @@ package com.nowgnodeel.retirement_planner.asset.profit.service;
 
 import com.nowgnodeel.retirement_planner.asset.dividend.entity.Dividend;
 import com.nowgnodeel.retirement_planner.asset.dividend.repository.DividendRepository;
+import com.nowgnodeel.retirement_planner.asset.entity.Account;
 import com.nowgnodeel.retirement_planner.asset.entity.Asset;
 import com.nowgnodeel.retirement_planner.asset.entity.AssetCategory;
 import com.nowgnodeel.retirement_planner.asset.entity.Transaction;
@@ -47,6 +48,10 @@ class ProfitServiceTest {
         when(asset.getId()).thenReturn(9L);
         when(asset.getName()).thenReturn("Apple");
         when(asset.getCategory()).thenReturn(AssetCategory.FOREIGN_STOCK);
+        // 인별 집계라 항목마다 어느 계좌인지 함께 내려준다(같은 종목이 여러 계좌에 있을 수 있다).
+        Account account = mock(Account.class);
+        when(account.getName()).thenReturn("키움 위탁");
+        when(asset.getAccount()).thenReturn(account);
         Transaction tx = mock(Transaction.class);
         when(tx.getId()).thenReturn(1L);
         when(tx.getAsset()).thenReturn(asset);
