@@ -243,7 +243,7 @@ public class AssetService {
     /**
      * 현금·외화 자산 등록/갱신. 거래 기반이 아니라 잔액을 그대로 저장한다.
      * 계좌당 통화별 1건만 유지 — 같은 통화를 다시 등록하면 새 자산을 만들지 않고 잔액을 덮어쓴다.
-     * 기관유형으로 제한하지 않는다 — 증권사 예수금, 은행 잔액, 거래소 원화/달러 예수금 모두
+     * 기관유형으로 제한하지 않는다 — 증권사 예수금, 거래소 원화/달러 예수금 모두
      * 실제로 존재하는 잔액이다. D-198(연금저축·IRP 개별 매수 차단)은 "지정 상품만 거래 가능"이라는
      * 상품 제약이라 상품이 아닌 예수금 잔액에는 적용하지 않는다.
      */
@@ -254,6 +254,16 @@ public class AssetService {
                 .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
 
         String currency = request.currency();
+
+        // 연금저축·IRP는 원화 계좌라 달러 예수금이 존재하지 않는다. 해외주식 직접 매수도
+        // 막혀 있어(D-198) 달러가 들어올 경로 자체가 없다. 이전에는 현금·외화를 계좌 유형과
+        // 무관하게 열어뒀는데, 실제로 만들 수 없는 잔액을 등록할 수 있는 상태였다.
+        if ("USD".equals(currency)
+                && (account.getDetailType() == AccountDetailType.IRP
+                    || account.getDetailType() == AccountDetailType.PENSION_SAVINGS)) {
+            throw new IllegalArgumentException("연금저축·IRP 계좌에는 달러 예수금을 등록할 수 없어요.");
+        }
+
         Asset asset = assetRepository.findByAccountIdAndSymbol(account.getId(), currency)
                 .orElseGet(() -> assetRepository.save(
                         Asset.builder()
@@ -504,7 +514,6 @@ public class AssetService {
         return switch (institutionType) {
             case SECURITIES -> category == AssetCategory.DOMESTIC_STOCK || category == AssetCategory.FOREIGN_STOCK;
             case EXCHANGE -> category == AssetCategory.CRYPTO;
-            case BANK -> false;
         };
     }
 

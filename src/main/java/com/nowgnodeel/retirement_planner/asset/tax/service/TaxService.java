@@ -54,7 +54,7 @@ public class TaxService {
      * "기준 미달"이라고 답한다. 둘 다 세법을 잘못 적용한 것이라 계좌 스코프 API는 폐지했다.
      *
      * 대상 계좌는 일반(NORMAL) 증권·거래소 계좌뿐이다 — ISA·IRP·연금저축은 과세이연/저율
-     * 분리과세라 양도소득세·금융소득 합산 대상이 아니고, 은행 계좌는 매도·배당 개념이 없다.
+     * 분리과세라 양도소득세·금융소득 합산 대상이 아니다.
      */
     public TaxSummaryResponse getTaxForUser(Long userId, int year) {
         LocalDate start = LocalDate.of(year, 1, 1);
@@ -75,10 +75,9 @@ public class TaxService {
         );
     }
 
-    /** 위 쿼리들의 detailType/institutionType 조건과 반드시 같은 규칙이어야 한다. */
+    /** 위 쿼리들의 detailType 조건과 반드시 같은 규칙이어야 한다. */
     private boolean isTaxScoped(Account account) {
-        return account.getDetailType() == AccountDetailType.NORMAL
-                && account.getInstitutionType() != InstitutionType.BANK;
+        return account.getDetailType() == AccountDetailType.NORMAL;
     }
 
     // D-064: 해외주식만 대상, 국내주식은 조회 자체를 하지 않는다.

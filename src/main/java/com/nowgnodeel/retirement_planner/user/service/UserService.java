@@ -98,7 +98,7 @@ public class UserService {
     // 회원탈퇴 — 즉시 하드 삭제(유예 기간·소프트 삭제 없음, MVP 단순화). FK 순서 주의:
     // accounts.user_id/refresh_tokens.user_id 모두 ON DELETE CASCADE가 아니라서(V2/V8)
     // user row를 지우기 전에 먼저 지워야 한다. accounts 삭제는 assets→transactions/
-    // dividends/deposits까지 DB의 ON DELETE CASCADE(V2)로 자동 전파된다.
+    // dividends까지 DB의 ON DELETE CASCADE(V2)로 자동 전파된다.
     @Transactional
     @AuditLogging(action = AuditAction.DELETE, entityType = "User")
     public void withdraw(Long userId, WithdrawRequest request) {

@@ -67,7 +67,6 @@ public interface DividendRepository extends JpaRepository<Dividend, Long> {
     @EntityGraph(attributePaths = "asset")
     @Query("SELECT d FROM Dividend d WHERE d.asset.account.user.id = :userId " +
             "AND d.asset.account.detailType = com.nowgnodeel.retirement_planner.asset.entity.AccountDetailType.NORMAL " +
-            "AND d.asset.account.institutionType <> com.nowgnodeel.retirement_planner.asset.entity.InstitutionType.BANK " +
             "AND d.payDate BETWEEN :start AND :end")
     List<Dividend> findTaxableByUserInPeriod(
             @Param("userId") Long userId, @Param("start") LocalDate start, @Param("end") LocalDate end);

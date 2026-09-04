@@ -27,7 +27,7 @@ public class TaxDtos {
      */
     public record TaxScope(
             int taxableAccountCount,   // 집계에 포함된 계좌 수(일반 증권·거래소)
-            int excludedAccountCount,  // 세제혜택(ISA/IRP/연금저축)·은행이라 제외한 계좌 수
+            int excludedAccountCount,  // 세제혜택(ISA/IRP/연금저축)이라 제외한 계좌 수
             List<String> excludedAccountNames
     ) {}
 
@@ -47,7 +47,7 @@ public class TaxDtos {
 
     /**
      * D-068: 실제 종합소득세액은 계산하지 않고, 금융소득 2천만원 기준 분리과세 종결 여부만 판정한다.
-     * interestIncomeNotTracked: 이 앱은 예적금 이자(D-060)를 추적하지 않아 실제 금융소득이
+     * interestIncomeNotTracked: 이 앱은 예적금 이자를 추적하지 않아 실제 금융소득이
      * totalDividendKrw보다 클 수 있다는 캐비트 — 프론트에 상시 노출 필요.
      * R-016 보완: totalDividendKrw는 국내주식 배당(저장값=세후 순액)을 원천징수율 15.4%로
      * 세전 역환산한 뒤 해외주식(저장값=세전 USD→원화 환산)과 합산한 값이다. 실제 세전 금액과

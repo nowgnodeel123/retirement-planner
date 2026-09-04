@@ -83,14 +83,13 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             @Param("type") TransactionType type,
             @Param("start") LocalDate start, @Param("end") LocalDate end);
 
-    // 과세 대상 계좌만 — 세제혜택 계좌(ISA/IRP/연금저축)는 양도소득세 대상이 아니고(과세이연·
-    // 저율분리과세), 은행 계좌는 매도 개념 자체가 없다. 이 필터를 빼면 연금저축 안의 해외 ETF
-    // 매도차익이 양도세로 잘못 잡힌다.
+    // 과세 대상 계좌만 — 세제혜택 계좌(ISA/IRP/연금저축)는 양도소득세 대상이 아니다
+    // (과세이연·저율분리과세). 이 필터를 빼면 연금저축 안의 해외 ETF 매도차익이
+    // 양도세로 잘못 잡힌다.
     @EntityGraph(attributePaths = "asset")
     @Query("SELECT t FROM Transaction t WHERE t.asset.account.user.id = :userId " +
             "AND t.type = :type AND t.asset.category = :category " +
             "AND t.asset.account.detailType = com.nowgnodeel.retirement_planner.asset.entity.AccountDetailType.NORMAL " +
-            "AND t.asset.account.institutionType <> com.nowgnodeel.retirement_planner.asset.entity.InstitutionType.BANK " +
             "AND t.tradeDate BETWEEN :start AND :end")
     List<Transaction> findTaxableByUserAndCategoryAndTypeInPeriod(
             @Param("userId") Long userId, @Param("category") AssetCategory category,

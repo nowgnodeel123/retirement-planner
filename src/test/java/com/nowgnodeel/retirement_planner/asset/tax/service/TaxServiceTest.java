@@ -55,15 +55,11 @@ class TaxServiceTest {
         return dividend;
     }
 
+    // 은행 계좌 유형이 없어진 뒤로(V17) 집계 범위는 detailType 하나로만 갈린다.
     private Account accountOf(String name, InstitutionType institution, AccountDetailType detail) {
         Account account = mock(Account.class);
         when(account.getDetailType()).thenReturn(detail);
-        // 서비스가 &&로 단락 평가하므로 detailType이 NORMAL일 때만 institutionType을 읽는다.
-        if (detail == AccountDetailType.NORMAL) {
-            when(account.getInstitutionType()).thenReturn(institution);
-        }
-        boolean excluded = detail != AccountDetailType.NORMAL || institution == InstitutionType.BANK;
-        if (excluded) {
+        if (detail != AccountDetailType.NORMAL) {
             when(account.getName()).thenReturn(name);
         }
         return account;
@@ -151,15 +147,14 @@ class TaxServiceTest {
     // ── 집계 대상 계좌 범위 ────────────────────────────────────────────────
 
     @Test
-    @DisplayName("세제혜택·은행 계좌는 집계에서 빼고, 뺐다는 사실을 응답에 담는다")
-    void scope_excludesTaxAdvantagedAndBankAccounts() {
+    @DisplayName("세제혜택 계좌는 집계에서 빼고, 뺐다는 사실을 응답에 담는다")
+    void scope_excludesTaxAdvantagedAccounts() {
         List<Account> accounts = List.of(
                 accountOf("키움 위탁", InstitutionType.SECURITIES, AccountDetailType.NORMAL),
                 accountOf("업비트", InstitutionType.EXCHANGE, AccountDetailType.NORMAL),
                 accountOf("미래에셋 연금저축", InstitutionType.SECURITIES, AccountDetailType.PENSION_SAVINGS),
                 accountOf("삼성 IRP", InstitutionType.SECURITIES, AccountDetailType.IRP),
-                accountOf("국민 ISA", InstitutionType.SECURITIES, AccountDetailType.ISA),
-                accountOf("국민은행 입출금", InstitutionType.BANK, AccountDetailType.NORMAL));
+                accountOf("국민 ISA", InstitutionType.SECURITIES, AccountDetailType.ISA));
         given(accountRepository.findAllByUserId(USER_ID)).willReturn(accounts);
         noSells();
         noDividends();
@@ -167,9 +162,9 @@ class TaxServiceTest {
         TaxScope scope = taxService.getTaxForUser(USER_ID, 2026).scope();
 
         assertThat(scope.taxableAccountCount()).isEqualTo(2);
-        assertThat(scope.excludedAccountCount()).isEqualTo(4);
+        assertThat(scope.excludedAccountCount()).isEqualTo(3);
         assertThat(scope.excludedAccountNames())
-                .containsExactly("미래에셋 연금저축", "삼성 IRP", "국민 ISA", "국민은행 입출금");
+                .containsExactly("미래에셋 연금저축", "삼성 IRP", "국민 ISA");
     }
 
     // ── 배당 세전 역환산 (R-016) — 인별로 올려도 규칙은 그대로 ─────────────
