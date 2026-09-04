@@ -142,6 +142,7 @@ public class SimulationService {
         RetirementSearchResult search = findEarliestRetirementAge(req);
         int estimatedRetirementAge = search.age();
         FirstYearBreakdown fy = search.projection().firstYearBreakdown();
+        AccumulatedAssets acc = search.projection().accumulated();
 
         int yearsUntilRetirement = estimatedRetirementAge - req.getCurrentAge();
         int totalPensionYears = calculateTotalPensionYears(req, yearsUntilRetirement);
@@ -150,7 +151,15 @@ public class SimulationService {
         long totalGross = fy.nationalGross() + fy.midGross() + fy.liquidWithdrawalGross();
         long totalAfterTax = fy.nationalAfterTax() + fy.midAfterTax() + fy.liquidWithdrawalAfterTax();
         long target = Math.round(req.getTargetMonthlyExpense());
-        long shortfall = totalAfterTax - target;
+
+        // 목표를 은퇴 시점 명목으로 환산해서 비교한다. totalAfterTax는 은퇴 시점(수십 년 뒤)의
+        // 명목 금액인데 예전에는 여기서 오늘 기준 목표를 그대로 뺐다 — 34세가 500만원을
+        // 목표로 넣으면 36년 뒤 명목 소득 1,193만원에서 500을 빼 "693만원 여유"가 나왔다.
+        // 실제로는 같은 시점 목표가 1,216만원이라 여유가 없다. 모델 자체는 목표를 정확히
+        // 채우도록 인출하므로(gap-filling), 두 값을 같은 시점으로 맞추면 차이는 0에 수렴한다.
+        long targetAtRetirement = Math.round(
+                req.getTargetMonthlyExpense() * Math.pow(1 + INFLATION_RATE, yearsUntilRetirement));
+        long shortfall = totalAfterTax - targetAtRetirement;
 
         String message = generateMessage(estimatedRetirementAge, search.feasible());
         String shareMessage = "시뮬레이션 해보니 " + estimatedRetirementAge + "세 은퇴 가능성이 나왔어! 너는? → " + shareUrl;
@@ -176,6 +185,7 @@ public class SimulationService {
                         .totalMonthlyIncome(totalAfterTax)
                         .totalMonthlyIncomeGross(totalGross)
                         .targetMonthlyExpense(target)
+                        .targetMonthlyExpenseAtRetirement(targetAtRetirement)
                         .monthlyShortfall(shortfall)
                         .estimatedRetirementAge(estimatedRetirementAge)
                         .feasible(search.feasible())
@@ -184,12 +194,12 @@ public class SimulationService {
                         .build())
                 .breakdown(SimulationResponseDto.Breakdown.builder()
                         .nationalPension(fy.nationalAfterTax())
-                        .retirementPension(fy.midAfterTax())
-                        .retirementPensionGross(fy.midGross())
-                        .irp(0)
-                        .irpGross(0)
-                        .pensionSavings(0)
-                        .pensionSavingsGross(0)
+                        .retirementPension(fy.retirementPensionAfterTax())
+                        .retirementPensionGross(fy.retirementPensionGross())
+                        .irp(fy.irpAfterTax())
+                        .irpGross(fy.irpGross())
+                        .pensionSavings(fy.pensionSavingsAfterTax())
+                        .pensionSavingsGross(fy.pensionSavingsGross())
                         .pensionSavingsTaxBenefit(calculatePensionSavingsTaxBenefit(req.getMonthlyPensionSavingsContribution()))
                         .stockAsset(fy.liquidWithdrawalAfterTax())
                         .build())
@@ -205,6 +215,14 @@ public class SimulationService {
                         .healthInsuranceIncomePart(fy.nationalGross() - fy.nationalAfterTax())
                         .healthInsurancePropertyPart(0)
                         .propertyDeductionApplied(0)
+                        .build())
+                .accumulatedAssets(SimulationResponseDto.AccumulatedAssets.builder()
+                        .retirementPensionLumpSum(acc.retirementPensionLumpSum())
+                        .irpBalance(acc.irpBalance())
+                        .pensionSavingsBalance(acc.pensionSavingsBalance())
+                        .liquidBalance(acc.liquidBalance())
+                        .total(acc.total())
+                        .pensionUnlockAge(acc.pensionUnlockAge())
                         .build())
                 .taxBenefit(calculateTaxBenefit(req))
                 .dependentStatusWarning(calculateDependentStatusWarning(fy))
@@ -270,6 +288,13 @@ public class SimulationService {
     private record FirstYearBreakdown(
             long nationalGross, long nationalAfterTax,
             long midGross, long midAfterTax, double midTaxRate,
+            // D-131을 타임라인에만 적용했던 것을 요약에도 맞춘다. 퇴직연금(DB/DC)은 근속·급여로
+            // 자동 계산되고 IRP·연금저축은 사용자가 직접 넣는 별개 상품인데, 요약 화면은
+            // 셋을 합친 값을 전부 "퇴직연금"으로 표시하고 IRP·연금저축은 0으로 내려보냈다.
+            // 매달 IRP에 25만원을 넣는 사람이 결과에서 0원을 보게 된다.
+            long retirementPensionGross, long retirementPensionAfterTax,
+            long irpGross, long irpAfterTax,
+            long pensionSavingsGross, long pensionSavingsAfterTax,
             long liquidWithdrawalGross, long liquidWithdrawalAfterTax,
             // 은퇴나이와 무관하게 "국민연금+퇴직연금 계열이 둘 다 열렸을 때" 받을 금액.
             // nationalGross/midGross는 candidateAge가 수령개시나이 이전이면 0으로 가려지므로
@@ -290,8 +315,15 @@ public class SimulationService {
     ) {}
 
     private record RetirementProjection(
-            boolean feasible, FirstYearBreakdown firstYearBreakdown, List<YearlyIncome> timeline,
+            boolean feasible, FirstYearBreakdown firstYearBreakdown,
+            AccumulatedAssets accumulated, List<YearlyIncome> timeline,
             MonteCarloInputs monteCarloInputs
+    ) {}
+
+    /** 은퇴 시점 적립 자산 스냅샷(만원). pensionUnlockAge = 연금 계열 기준 나이. */
+    private record AccumulatedAssets(
+            long retirementPensionLumpSum, long irpBalance, long pensionSavingsBalance,
+            long liquidBalance, long total, int pensionUnlockAge
     ) {}
 
     // M16: 몬테카를로가 재사용할 "은퇴 시점 스냅샷". mid/national은 이 프로젝트의
@@ -337,6 +369,15 @@ public class SimulationService {
         long nationalMonthlyGross = calculateNationalPension(req, totalPensionYears, pensionReceiptAge, candidateAge);
         HealthInsuranceResult hi = calculateHealthInsurance(req, nationalMonthlyGross);
         long nationalMonthlyAfterTax = Math.max(0, nationalMonthlyGross - hi.total);
+
+        // 요약 화면이 쓰는 "은퇴 첫해" 국민연금. 타임라인은 수급 개시 이후 물가연동분을
+        // 반영하는데 요약은 개시 시점 값을 그대로 써서, 65세 수급·70세 은퇴인 사람에게
+        // 같은 해를 두고 179만원(요약)과 203만원(차트)이 동시에 보였다.
+        double nationalInflationToRetirement = candidateAge > pensionReceiptAge
+                ? Math.pow(1 + INFLATION_RATE, candidateAge - pensionReceiptAge)
+                : 1.0;
+        long nationalAtRetirementGross = Math.round(nationalMonthlyGross * nationalInflationToRetirement);
+        long nationalAtRetirementAfterTax = Math.round(nationalMonthlyAfterTax * nationalInflationToRetirement);
 
         // ── LIQUID: 은퇴나이부터 90세까지 gap-filling drawdown ──
         double liquidAtRetirement = accumulateFv(
@@ -397,23 +438,43 @@ public class SimulationService {
             }
         }
 
+        boolean midOpen = candidateAge >= MID_UNLOCK_AGE;
         FirstYearBreakdown fy = new FirstYearBreakdown(
-                candidateAge >= pensionReceiptAge ? nationalMonthlyGross : 0,
-                candidateAge >= pensionReceiptAge ? nationalMonthlyAfterTax : 0,
-                candidateAge >= MID_UNLOCK_AGE ? midMonthlyGrossTotal : 0,
-                candidateAge >= MID_UNLOCK_AGE ? midMonthlyAfterTaxTotal : 0,
+                candidateAge >= pensionReceiptAge ? nationalAtRetirementGross : 0,
+                candidateAge >= pensionReceiptAge ? nationalAtRetirementAfterTax : 0,
+                midOpen ? midMonthlyGrossTotal : 0,
+                midOpen ? midMonthlyAfterTaxTotal : 0,
                 privateTaxRate,
+                midOpen ? retirementPensionGross : 0,
+                midOpen ? retirementPensionAfterTax : 0,
+                midOpen ? irpGross : 0,
+                midOpen ? irpAfterTax : 0,
+                midOpen ? psGross : 0,
+                midOpen ? psAfterTax : 0,
                 firstYearLiquidGross,
                 firstYearLiquidAfterTax,
                 nationalMonthlyGross,
                 midMonthlyGrossTotal
         );
 
+        // 은퇴 시점에 "얼마가 모여 있는가" — 월 수령액만으로는 규모가 안 잡힌다(D-017의 질문).
+        // 연금 계열은 55세 잠금 해제 시점 잔액이고 주식은 은퇴 시점 평가액이라, 은퇴가
+        // 55세보다 이르면 기준 시점이 서로 다르다. 그래서 기준 나이를 함께 내려보낸다.
+        AccumulatedAssets accumulated = new AccumulatedAssets(
+                Math.round(midAtUnlock.dbOrDcLump()),
+                Math.round(midAtUnlock.irpFv()),
+                Math.round(midAtUnlock.psFv()),
+                Math.round(liquidAtRetirement),
+                Math.round(midAtUnlock.dbOrDcLump() + midAtUnlock.irpFv()
+                        + midAtUnlock.psFv() + liquidAtRetirement),
+                payoutStartAge
+        );
+
         MonteCarloInputs mcInputs = new MonteCarloInputs(
                 pensionReceiptAge, midMonthlyAfterTaxTotal, nationalMonthlyAfterTax,
                 liquidAtRetirement, costBasis
         );
-        return new RetirementProjection(feasible, fy, timeline, mcInputs);
+        return new RetirementProjection(feasible, fy, accumulated, timeline, mcInputs);
     }
 
     // ======================================================================

@@ -11,6 +11,7 @@ public class SimulationResponseDto {
 
     private Summary summary;
     private Breakdown breakdown;
+    private AccumulatedAssets accumulatedAssets;
     private TaxDetail taxDetail;
     private TaxBenefit taxBenefit;
     private DependentStatusWarning dependentStatusWarning;
@@ -25,6 +26,11 @@ public class SimulationResponseDto {
         private long totalMonthlyIncome;
         private long totalMonthlyIncomeGross;
         private long targetMonthlyExpense;
+        // 위 targetMonthlyExpense는 사용자가 입력한 "오늘 기준" 금액이고, 이 값은 그것을
+        // 은퇴 시점까지 물가상승(2.5%)으로 환산한 금액이다. totalMonthlyIncome이 명목이라
+        // 비교는 반드시 이쪽과 해야 한다 — 예전에는 명목 소득에서 오늘 기준 목표를 빼서
+        // "월 693만원 여유"처럼 실제로 없는 여유가 표시됐다.
+        private long targetMonthlyExpenseAtRetirement;
         private long monthlyShortfall;
         private int estimatedRetirementAge;
         // WHY: 75세까지도 목표를 못 채우는 케이스를 프론트가 구분해서
@@ -45,6 +51,23 @@ public class SimulationResponseDto {
         private long pensionSavingsGross;
         private long pensionSavingsTaxBenefit;
         private long stockAsset;
+    }
+
+    /**
+     * 은퇴 시점에 모여 있는 자산(만원). 월 수령액만으로는 규모가 안 잡혀서 함께 내려보낸다 —
+     * "그 자산이 은퇴 시점에 충분한가"(D-017)가 이 앱의 질문인데 정작 총액이 없었다.
+     *
+     * pensionUnlockAge: 연금 계열(퇴직연금·IRP·연금저축) 잔액의 기준 나이다. 55세 전에
+     * 은퇴하면 연금은 55세까지 더 굴러가므로 주식 잔액(은퇴 시점)과 기준 시점이 다르다.
+     */
+    @Getter @Builder
+    public static class AccumulatedAssets {
+        private long retirementPensionLumpSum;
+        private long irpBalance;
+        private long pensionSavingsBalance;
+        private long liquidBalance;
+        private long total;
+        private int pensionUnlockAge;
     }
 
     @Getter @Builder
