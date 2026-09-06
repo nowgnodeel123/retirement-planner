@@ -99,7 +99,11 @@ resilience4j:
     configs:
       default:
         sliding-window-size: 10
-        minimum-number-of-calls: 5
+        # 2회 실패면 연다. 5였을 때는 보유 종목이 4개인 사용자가 임계값을 못 채워
+        # 페이지를 열 때마다 종목당 4초씩(= 16초) 그대로 기다렸다 — 서킷이 있는데도
+        # "빠르게 실패"가 한 번도 작동하지 않는 구간이 생긴다(2026-09-06 data.go.kr 장애).
+        # 정상 응답 속도와 무관한 값이라 장애 중에도 안전하게 낮출 수 있다.
+        minimum-number-of-calls: 2
         failure-rate-threshold: 50
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 3

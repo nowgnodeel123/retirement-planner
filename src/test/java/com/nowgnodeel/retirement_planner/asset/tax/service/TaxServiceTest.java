@@ -93,12 +93,13 @@ class TaxServiceTest {
 
         // 서로 다른 계좌에서 발생한 매도 3건, 각 300만원 이익 → 합 900만원.
         // 계좌별로 공제하던 예전 방식이면 900만 - 750만 = 150만이 과세표준이 됐다.
-        Transaction t1 = mock(Transaction.class);
-        Transaction t2 = mock(Transaction.class);
-        Transaction t3 = mock(Transaction.class);
+        Transaction t1 = sellTxOnAsset(1L);
+        Transaction t2 = sellTxOnAsset(2L);
+        Transaction t3 = sellTxOnAsset(3L);
         given(transactionRepository.findTaxableByUserAndCategoryAndTypeInPeriod(any(), any(), any(), any(), any()))
                 .willReturn(List.of(t1, t2, t3));
-        given(assetService.calculateRealizedProfitKrw(any())).willReturn(new BigDecimal("3000000"));
+        given(assetService.loadTransactionsForAssetsOf(any())).willReturn(java.util.Map.of());
+        given(assetService.calculateRealizedProfitKrw(any(), any())).willReturn(new BigDecimal("3000000"));
 
         TaxSummaryResponse result = taxService.getTaxForUser(USER_ID, 2026);
         CapitalGainsEstimate cg = result.capitalGains();
@@ -116,10 +117,11 @@ class TaxServiceTest {
         noAccounts();
         noDividends();
 
-        Transaction t1 = mock(Transaction.class);
+        Transaction t1 = sellTxOnAsset(1L);
         given(transactionRepository.findTaxableByUserAndCategoryAndTypeInPeriod(any(), any(), any(), any(), any()))
                 .willReturn(List.of(t1));
-        given(assetService.calculateRealizedProfitKrw(any())).willReturn(new BigDecimal("1000000"));
+        given(assetService.loadTransactionsForAssetsOf(any())).willReturn(java.util.Map.of());
+        given(assetService.calculateRealizedProfitKrw(any(), any())).willReturn(new BigDecimal("1000000"));
 
         CapitalGainsEstimate cg = taxService.getTaxForUser(USER_ID, 2026).capitalGains();
 
@@ -258,5 +260,15 @@ class TaxServiceTest {
         noDividends();
 
         assertThat(taxService.getTaxForUser(USER_ID, 2026).dividendIncome().interestIncomeNotTracked()).isTrue();
+    }
+
+    /** 거래는 반드시 자산에 속한다(FK not-null). 집계 경로가 자산 id로 거래를 묶으므로 목도 그 상태를 지킨다. */
+    private Transaction sellTxOnAsset(Long assetId) {
+        Transaction tx = mock(Transaction.class);
+        com.nowgnodeel.retirement_planner.asset.entity.Asset asset =
+                mock(com.nowgnodeel.retirement_planner.asset.entity.Asset.class);
+        lenient().when(asset.getId()).thenReturn(assetId);
+        lenient().when(tx.getAsset()).thenReturn(asset);
+        return tx;
     }
 }

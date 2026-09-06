@@ -9,6 +9,7 @@ import com.nowgnodeel.retirement_planner.asset.entity.Transaction;
 import com.nowgnodeel.retirement_planner.asset.entity.TransactionType;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,6 +23,18 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     // 그때 어느 쪽을 먼저 보느냐에 따라 취득원가가 달라진다. 입력 순서(id asc)를 2차
     // 기준으로 고정해 같은 데이터가 항상 같은 값을 내도록 한다.
     List<Transaction> findAllByAssetIdOrderByTradeDateAscIdAsc(Long assetId);
+
+    /**
+     * 여러 자산의 거래를 한 번에 읽는다 — 목록 화면의 N+1을 없애기 위한 것이다.
+     *
+     * 자산 목록·대시보드·시뮬레이터 프리필은 자산마다 보유수량·평단·원화 취득원가를
+     * 각각 재생하느라 자산 1건당 쿼리 3건을 날렸다(자산 14개 = 45건). 목록 조회의 N+1은
+     * 최적화가 아니라 결함으로 취급한다는 레포 규칙에 걸리는 상태였다.
+     *
+     * 정렬 기준은 단건 버전과 동일하게 유지해야 한다 — 호출부가 자산별로 잘라 쓰는데
+     * 그룹 안의 상대 순서가 달라지면 이동평균 평단이 달라진다.
+     */
+    List<Transaction> findAllByAssetIdInOrderByTradeDateAscIdAsc(Collection<Long> assetIds);
 
     // M6: 거래내역 화면은 최신순 표시가 자연스러움.
     // tradeDate는 날짜 단위(시각 없음)라 같은 날 여러 건이면 동점이 발생 —

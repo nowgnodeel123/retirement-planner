@@ -19,6 +19,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 import static com.nowgnodeel.retirement_planner.asset.profit.dto.ProfitDtos.*;
 
@@ -48,10 +49,13 @@ public class ProfitService {
         List<ProfitItem> items = new ArrayList<>();
         BigDecimal realizedTotal = BigDecimal.ZERO;
 
+        // 매도마다 그 자산의 거래를 다시 읽으면 매도 수만큼 쿼리가 늘어난다 — 미리 한 번에 읽는다.
+        Map<Long, List<Transaction>> txsByAsset = assetService.loadTransactionsForAssetsOf(sells);
         for (Transaction tx : sells) {
             Asset asset = tx.getAsset();
             // D-107: AssetService.calculateRealizedProfitKrw가 공식의 단일 출처(tax 패키지와 공유).
-            BigDecimal profit = assetService.calculateRealizedProfitKrw(tx);
+            BigDecimal profit = assetService.calculateRealizedProfitKrw(
+                    tx, txsByAsset.getOrDefault(asset.getId(), List.of()));
             realizedTotal = realizedTotal.add(profit);
 
             items.add(new ProfitItem(

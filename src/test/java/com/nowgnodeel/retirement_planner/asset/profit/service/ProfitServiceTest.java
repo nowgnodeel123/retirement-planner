@@ -25,6 +25,7 @@ import java.util.List;
 import static com.nowgnodeel.retirement_planner.asset.profit.dto.ProfitDtos.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -56,7 +57,8 @@ class ProfitServiceTest {
         when(tx.getId()).thenReturn(1L);
         when(tx.getAsset()).thenReturn(asset);
         when(tx.getTradeDate()).thenReturn(date);
-        given(assetService.calculateRealizedProfitKrw(tx)).willReturn(profit);
+        given(assetService.loadTransactionsForAssetsOf(any())).willReturn(java.util.Map.of());
+        given(assetService.calculateRealizedProfitKrw(eq(tx), any())).willReturn(profit);
         return tx;
     }
 

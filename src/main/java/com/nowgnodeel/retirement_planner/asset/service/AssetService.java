@@ -303,9 +303,7 @@ public class AssetService {
         accountRepository.findByIdAndUserId(accountId, userId)
                 .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
 
-        return assetRepository.findAllByAccountId(accountId).stream()
-                .map(this::toHoldingResponse)
-                .toList();
+        return toHoldingResponses(assetRepository.findAllByAccountId(accountId));
     }
 
     /**
@@ -313,9 +311,7 @@ public class AssetService {
      * findAllByAccount_UserId 자체가 userId로 스코핑되므로 별도 소유자 검증 분기 불필요.
      */
     public List<HoldingResponse> findAllHoldingsByUser(Long userId) {
-        return assetRepository.findAllByAccount_UserId(userId).stream()
-                .map(this::toHoldingResponse)
-                .toList();
+        return toHoldingResponses(assetRepository.findAllByAccount_UserId(userId));
     }
 
     /**
@@ -343,7 +339,11 @@ public class AssetService {
      * 여기는 저장 "전" 시점의 순보유수량만 필요하다.
      */
     private BigDecimal calculateNetQuantity(Asset asset) {
-        List<Transaction> txs = transactionRepository.findAllByAssetIdOrderByTradeDateAsc(asset.getId());
+        return netQuantity(transactionRepository.findAllByAssetIdOrderByTradeDateAsc(asset.getId()));
+    }
+
+    /** 이미 읽어둔 거래로 순보유수량을 센다 — 목록 화면이 자산마다 다시 조회하지 않도록. */
+    private BigDecimal netQuantity(List<Transaction> txs) {
         BigDecimal buyQty = BigDecimal.ZERO;
         BigDecimal sellQty = BigDecimal.ZERO;
         for (Transaction tx : txs) {
@@ -382,7 +382,18 @@ public class AssetService {
      */
     private CostBasis replayMovingAverage(Asset asset, Transaction stopBefore,
                                           boolean krwBasis, BigDecimal fallbackFx) {
-        List<Transaction> txs = transactionRepository.findAllByAssetIdOrderByTradeDateAscIdAsc(asset.getId());
+        return replayMovingAverage(
+                transactionRepository.findAllByAssetIdOrderByTradeDateAscIdAsc(asset.getId()),
+                stopBefore, krwBasis, fallbackFx);
+    }
+
+    /**
+     * 이미 읽어둔 거래로 재생한다. 목록 화면은 자산 하나당 이 재생을 두세 번 하는데,
+     * 그때마다 조회하면 자산 수에 비례해 쿼리가 늘어난다(자산 14개 = 45건이었다).
+     * txs는 반드시 tradeDate asc, id asc로 정렬돼 있어야 한다 — 순서가 평단을 바꾼다.
+     */
+    private CostBasis replayMovingAverage(List<Transaction> txs, Transaction stopBefore,
+                                          boolean krwBasis, BigDecimal fallbackFx) {
         BigDecimal quantity = BigDecimal.ZERO;
         BigDecimal cost = BigDecimal.ZERO;
         for (Transaction tx : txs) {
@@ -402,6 +413,19 @@ public class AssetService {
             }
         }
         return new CostBasis(quantity, cost);
+    }
+
+    /**
+     * 주어진 거래들이 속한 자산의 전체 거래를 자산별로 묶어 한 번에 읽는다.
+     * 수익 탭·세금 탭이 매도 목록을 순회하기 전에 불러 N+1을 없애는 용도다.
+     */
+    public Map<Long, List<Transaction>> loadTransactionsForAssetsOf(List<Transaction> txs) {
+        if (txs.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> assetIds = txs.stream().map(tx -> tx.getAsset().getId()).distinct().toList();
+        return transactionRepository.findAllByAssetIdInOrderByTradeDateAscIdAsc(assetIds).stream()
+                .collect(Collectors.groupingBy(tx -> tx.getAsset().getId()));
     }
 
     /** 영속화 전 엔티티는 id가 없을 수 있어 동일성 비교를 먼저 본다. */
@@ -439,11 +463,21 @@ public class AssetService {
      * D-109로 세금 탭 양도소득세 추정까지 흘러갔다.
      */
     public BigDecimal calculateRealizedProfitKrw(Transaction sellTx) {
+        return calculateRealizedProfitKrw(sellTx,
+                transactionRepository.findAllByAssetIdOrderByTradeDateAscIdAsc(sellTx.getAsset().getId()));
+    }
+
+    /**
+     * 매도 목록을 한 번에 처리할 때 쓰는 버전. 수익 탭·세금 탭은 매도 건마다 이 계산을
+     * 부르는데, 매도마다 그 자산의 거래를 다시 읽으면 매도 수만큼 쿼리가 늘어난다.
+     * 호출부가 자산별 거래를 미리 읽어 넘기면 조회는 한 번으로 끝난다.
+     */
+    public BigDecimal calculateRealizedProfitKrw(Transaction sellTx, List<Transaction> assetTxs) {
         BigDecimal sellFx = sellTx.getFx();
         boolean krwBasis = sellFx != null;
         BigDecimal quantity = sellTx.getQuantity();
 
-        CostBasis basisAtSell = replayMovingAverage(sellTx.getAsset(), sellTx, krwBasis, sellFx);
+        CostBasis basisAtSell = replayMovingAverage(assetTxs, sellTx, krwBasis, sellFx);
         BigDecimal costOfSold = basisAtSell.averagePrice().multiply(quantity);
 
         BigDecimal proceeds = sellTx.getUnitPrice().multiply(quantity);
@@ -456,13 +490,45 @@ public class AssetService {
     // D-050: 파생값 계산 + M4: 현재가/평가금액/손익률 + M5: 해외주식 원화환산(D-063)
     // M6 수정: quantity가 이제 BUY 누적만이 아니라 BUY-SELL 순보유량이다.
     // (기존 버그 수정 — SELL 트랜잭션이 저장돼도 보유수량에 전혀 반영되지 않던 문제)
+    /**
+     * 목록용 변환. 거래를 자산별로 나눠 미리 읽어두고 넘긴다 — 예전에는 자산마다
+     * 보유수량·평단·원화취득원가를 각각 재생하느라 쿼리가 자산 수 × 3으로 늘었다.
+     * 이제 자산 목록 1건 + 거래 1건, 총 2건으로 끝난다.
+     */
+    private List<HoldingResponse> toHoldingResponses(List<Asset> assets) {
+        Map<Long, List<Transaction>> txsByAsset = loadTransactionsByAsset(assets);
+        return assets.stream()
+                .map(asset -> toHoldingResponse(asset, txsByAsset.getOrDefault(asset.getId(), List.of())))
+                .toList();
+    }
+
+    /** 거래가 없는 자산(현금 등)은 키 자체가 없으므로 호출부가 빈 리스트로 받는다. */
+    private Map<Long, List<Transaction>> loadTransactionsByAsset(List<Asset> assets) {
+        if (assets.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> assetIds = assets.stream().map(Asset::getId).toList();
+        return transactionRepository.findAllByAssetIdInOrderByTradeDateAscIdAsc(assetIds).stream()
+                .collect(Collectors.groupingBy(tx -> tx.getAsset().getId()));
+    }
+
     private HoldingResponse toHoldingResponse(Asset asset) {
         if (asset.getCategory() == AssetCategory.CASH) {
             return toCashHoldingResponse(asset);
         }
+        return toHoldingResponse(asset,
+                transactionRepository.findAllByAssetIdOrderByTradeDateAscIdAsc(asset.getId()));
+    }
 
-        BigDecimal quantity = calculateNetQuantity(asset);
-        BigDecimal avgPrice = calculateAveragePrice(asset);
+    private HoldingResponse toHoldingResponse(Asset asset, List<Transaction> txs) {
+        if (asset.getCategory() == AssetCategory.CASH) {
+            return toCashHoldingResponse(asset);
+        }
+
+        BigDecimal quantity = netQuantity(txs);
+        BigDecimal avgPrice = replayMovingAverage(txs, null, false, null)
+                .averagePrice()
+                .setScale(4, RoundingMode.HALF_UP);
         BigDecimal costBasis = avgPrice.multiply(quantity);
 
         BigDecimal currentPrice = null;
@@ -505,7 +571,7 @@ public class AssetService {
         BigDecimal krwProfitRate = null;
         if (asset.getCategory() == AssetCategory.FOREIGN_STOCK) {
             if (krwEvaluationAmount != null) {
-                BigDecimal krwCostBasis = replayMovingAverage(asset, null, true, exchangeRate).cost();
+                BigDecimal krwCostBasis = replayMovingAverage(txs, null, true, exchangeRate).cost();
                 krwProfitAmount = krwEvaluationAmount.subtract(krwCostBasis);
                 krwProfitRate = krwCostBasis.compareTo(BigDecimal.ZERO) > 0
                         ? krwProfitAmount.divide(krwCostBasis, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))

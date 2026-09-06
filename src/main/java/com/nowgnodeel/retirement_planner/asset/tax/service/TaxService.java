@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import static com.nowgnodeel.retirement_planner.asset.tax.dto.TaxDtos.*;
 
@@ -101,9 +102,12 @@ public class TaxService {
                 userId, AssetCategory.FOREIGN_STOCK, TransactionType.SELL, start, end);
 
         BigDecimal realizedTotal = BigDecimal.ZERO;
+        // 수익 탭과 동일하게, 매도 순회 전에 자산별 거래를 한 번에 읽어 N+1을 없앤다.
+        Map<Long, List<Transaction>> txsByAsset = assetService.loadTransactionsForAssetsOf(sells);
         for (Transaction tx : sells) {
             // D-107 공식의 단일 출처 재사용 — 수익 탭과 동일 계산(R-015 대응)
-            realizedTotal = realizedTotal.add(assetService.calculateRealizedProfitKrw(tx));
+            realizedTotal = realizedTotal.add(assetService.calculateRealizedProfitKrw(
+                    tx, txsByAsset.getOrDefault(tx.getAsset().getId(), List.of())));
         }
 
         BigDecimal taxableBase = realizedTotal.subtract(BASIC_DEDUCTION);
