@@ -50,7 +50,7 @@ class DashboardServiceTest {
                 new BigDecimal("3199.70"), new BigDecimal("2199.70"), new BigDecimal("219.97"),
                 new BigDecimal("1488.80"), new BigDecimal("4763713.36"),
                 new BigDecimal("3563713.36"), new BigDecimal("296.9761"),
-                "2026-07-16", 0);
+                null, "2026-07-16", 0);
         given(assetService.findAllHoldingsByUser(USER_ID)).willReturn(List.of(aapl));
 
         PortfolioSummaryResponse result = dashboardService.getSummary(USER_ID);
@@ -70,7 +70,7 @@ class DashboardServiceTest {
                 new BigDecimal("1000"), null, null,
                 new BigDecimal("1000"), null, null,
                 new BigDecimal("1488.80"), new BigDecimal("1488800"),
-                null, null, "2026-07-16", 0);
+                null, null, null, "2026-07-16", 0);
         given(assetService.findAllHoldingsByUser(USER_ID)).willReturn(List.of(usdCash));
 
         PortfolioSummaryResponse result = dashboardService.getSummary(USER_ID);
@@ -86,12 +86,12 @@ class DashboardServiceTest {
         HoldingResponse soldOut = new HoldingResponse(
                 3L, ACC, "MSFT", "마이크로소프트", AssetCategory.FOREIGN_STOCK.name(), "USD",
                 BigDecimal.ZERO, BigDecimal.ZERO, null,
-                null, null, null, null, null, null, null, null, 0);
+                null, null, null, null, null, null, null, null, null, 0);
         HoldingResponse krwStock = new HoldingResponse(
                 4L, ACC, "005930", "삼성전자", AssetCategory.DOMESTIC_STOCK.name(), "KRW",
                 BigDecimal.TEN, new BigDecimal("70000"), new BigDecimal("80000"),
                 new BigDecimal("800000"), new BigDecimal("100000"), new BigDecimal("14.29"),
-                null, null, new BigDecimal("100000"), new BigDecimal("14.29"), null, 0);
+                null, null, new BigDecimal("100000"), new BigDecimal("14.29"), null, null, 0);
         given(assetService.findAllHoldingsByUser(USER_ID)).willReturn(List.of(soldOut, krwStock));
 
         PortfolioSummaryResponse result = dashboardService.getSummary(USER_ID);
@@ -107,7 +107,7 @@ class DashboardServiceTest {
                 5L, ACC, "TSLA", "테슬라", AssetCategory.FOREIGN_STOCK.name(), "USD",
                 BigDecimal.TEN, new BigDecimal("100"), new BigDecimal("200"),
                 new BigDecimal("2000"), new BigDecimal("1000"), new BigDecimal("100"),
-                null, null, null, null, null, 0);
+                null, null, null, null, null, null, 0);
         given(assetService.findAllHoldingsByUser(USER_ID)).willReturn(List.of(noFx));
 
         PortfolioSummaryResponse result = dashboardService.getSummary(USER_ID);

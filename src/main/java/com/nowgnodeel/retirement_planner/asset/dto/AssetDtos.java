@@ -99,6 +99,13 @@ public class AssetDtos {
              */
             BigDecimal krwProfitAmount,
             BigDecimal krwProfitRate,
+            /**
+             * currentPrice를 외부 API에서 실제로 받아온 시각(ISO-8601). 외부 시세 서비스가
+             * 죽어 있는 동안에는 마지막으로 성공한 값을 대신 돌려주므로(stale-on-error),
+             * 이 값이 오래됐으면 화면이 "언제 시세인지"를 밝혀야 한다.
+             * 시세를 못 구했거나 시세 API를 안 쓰는 자산(현금·펀드)은 null.
+             */
+            String priceAsOf,
             String exchangeRateBaseDate,
             Integer sortOrder
     ) {}

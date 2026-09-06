@@ -469,11 +469,13 @@ public class AssetService {
         BigDecimal evaluationAmount = null;
         BigDecimal profitAmount = null;
         BigDecimal profitRate = null;
+        String priceAsOf = null;
 
         if (quantity.compareTo(BigDecimal.ZERO) > 0) {
-            Optional<BigDecimal> price = priceService.getCurrentPrice(asset.getCategory(), asset.getSymbol());
-            if (price.isPresent()) {
-                currentPrice = price.get();
+            Optional<PriceService.Quote> quote = priceService.getQuote(asset.getCategory(), asset.getSymbol());
+            if (quote.isPresent()) {
+                currentPrice = quote.get().price();
+                priceAsOf = quote.get().fetchedAt().toString();
                 evaluationAmount = currentPrice.multiply(quantity);
                 profitAmount = evaluationAmount.subtract(costBasis);
                 profitRate = costBasis.compareTo(BigDecimal.ZERO) > 0
@@ -520,7 +522,7 @@ public class AssetService {
                 asset.getCategory().name(), asset.getCurrency(), quantity, avgPrice,
                 currentPrice, evaluationAmount, profitAmount, profitRate,
                 exchangeRate, krwEvaluationAmount, krwProfitAmount, krwProfitRate,
-                exchangeRateBaseDate, asset.getSortOrder()
+                priceAsOf, exchangeRateBaseDate, asset.getSortOrder()
         );
     }
 
@@ -566,7 +568,7 @@ public class AssetService {
                 asset.getCategory().name(), asset.getCurrency(), balance, null,
                 null, balance, null, null,
                 exchangeRate, krwEvaluationAmount, null, null,
-                exchangeRateBaseDate, asset.getSortOrder()
+                null, exchangeRateBaseDate, asset.getSortOrder()
         );
     }
 

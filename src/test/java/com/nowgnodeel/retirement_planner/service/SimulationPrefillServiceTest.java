@@ -55,7 +55,7 @@ class SimulationPrefillServiceTest {
                 1L, accountId, "SYM", "종목", category.name(), "KRW",
                 BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE,
                 new BigDecimal(evalKrw), BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null, BigDecimal.ZERO, BigDecimal.ZERO, null, 0);
+                null, null, BigDecimal.ZERO, BigDecimal.ZERO, null, null, 0);
     }
 
     /** 시세(또는 환율) 미조회 자산: 평가금액이 없어 합계에서 빠져야 한다. */
@@ -63,7 +63,7 @@ class SimulationPrefillServiceTest {
         return new HoldingResponse(
                 2L, accountId, "SYM", "종목", AssetCategory.DOMESTIC_STOCK.name(), "KRW",
                 BigDecimal.ONE, BigDecimal.ONE, null,
-                null, null, null, null, null, null, null, null, 0);
+                null, null, null, null, null, null, null, null, null, 0);
     }
 
     private void givenAccounts(Account... accounts) {
@@ -148,12 +148,12 @@ class SimulationPrefillServiceTest {
                 BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ONE,
                 new BigDecimal("10000"), BigDecimal.ZERO, BigDecimal.ZERO,
                 new BigDecimal("1300"), new BigDecimal("13000000"),
-                BigDecimal.ZERO, BigDecimal.ZERO, "2026-08-30", 0);
+                BigDecimal.ZERO, BigDecimal.ZERO, null, "2026-08-30", 0);
         HoldingResponse withoutFx = new HoldingResponse(
                 4L, NORMAL_ACC, "MSFT", "마이크로소프트", AssetCategory.FOREIGN_STOCK.name(), "USD",
                 BigDecimal.TEN, BigDecimal.ONE, BigDecimal.ONE,
                 new BigDecimal("10000"), BigDecimal.ZERO, BigDecimal.ZERO,
-                null, null, null, null, null, 0);
+                null, null, null, null, null, null, 0);
         givenHoldings(withFx, withoutFx);
 
         SimulationPrefillResponseDto result = simulationPrefillService.getPrefill(USER_ID);
