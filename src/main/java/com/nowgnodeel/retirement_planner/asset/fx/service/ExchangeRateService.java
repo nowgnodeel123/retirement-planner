@@ -6,6 +6,8 @@ import com.nowgnodeel.retirement_planner.asset.fx.repository.ExchangeRateReposit
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,10 +36,47 @@ public class ExchangeRateService {
     /** 특정 날짜의 매매기준율 조회 결과 — 역탐색으로 인해 baseDate가 요청일과 다를 수 있다. */
     public record DatedRate(BigDecimal dealBasR, LocalDate baseDate) {}
 
-    // 영업일 11:30(KST) 이후 갱신 시도. zone 명시로 배포 서버 타임존(Railway는 기본 UTC일 수 있음) 영향 배제.
-    @Scheduled(cron = "0 30 11 * * MON-FRI", zone = "Asia/Seoul")
+    /**
+     * 영업일 11:30~18:30(KST) 매시 갱신 시도. zone 명시로 배포 서버 타임존(Railway는 기본 UTC일 수 있음) 영향 배제.
+     *
+     * WHY 한 번이 아니라 매시인가: 예전에는 평일 11:30 한 번뿐이라 그 순간 앱이 떠 있지 않으면
+     * 그날은 영영 갱신되지 않았다. 로컬 개발처럼 필요할 때만 띄우는 환경에서는 사실상 한 번도
+     * 안 돌아서 환율이 52일간 멈춰 있었고(2026-09-06 확인), 그동안 해외자산 원화환산이 전부
+     * 두 달 전 환율로 계산됐다. 배포 후에도 재시작·일시 장애가 같은 구멍을 만든다.
+     *
+     * 이미 오늘자 환율을 갖고 있으면 건너뛰므로(refreshIfStale) 실제 외부 호출은 하루 한 번이다.
+     */
+    @Scheduled(cron = "0 30 11-18 * * MON-FRI", zone = "Asia/Seoul")
     public void scheduledRefresh() {
-        refresh();
+        refreshIfStale();
+    }
+
+    /**
+     * 기동 직후에도 한 번 확인한다. 스케줄만 있으면 "앱이 떠 있는 시각"에 갱신이 의존하는데,
+     * 배포·재시작·로컬 실행은 그 시각을 피해 가는 일이 훨씬 많다.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void refreshOnStartup() {
+        refreshIfStale();
+    }
+
+    /**
+     * 오늘자 환율을 이미 갖고 있으면 아무것도 하지 않는다 — 그보다 최신인 값은 존재할 수 없다.
+     * 그 외에는 갱신을 시도하되, 실패가 스케줄러나 기동을 깨뜨리지 않도록 흡수한다.
+     * 환율은 없으면 화면이 degrade할 뿐이고(D-058), 여기서 예외를 터뜨려 얻을 게 없다.
+     */
+    public void refreshIfStale() {
+        try {
+            boolean hasTodayRate = exchangeRateRepository.findById(TARGET_CURRENCY)
+                    .map(rate -> !rate.getBaseDate().isBefore(LocalDate.now()))
+                    .orElse(false);
+            if (hasTodayRate) {
+                return;
+            }
+            refresh();
+        } catch (Exception e) {
+            log.warn("환율 자동 갱신 실패 — 기존 값을 유지한다", e);
+        }
     }
 
     public Optional<ExchangeRate> getRate(String currencyCode) {
