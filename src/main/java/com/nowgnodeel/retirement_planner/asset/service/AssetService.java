@@ -495,11 +495,32 @@ public class AssetService {
             }
         }
 
+        // 원화 기준 평가손익: 취득원가를 "매수 시점" fx로 환산해야 환차손익이 들어온다.
+        // 이전에는 집계 쪽에서 profitAmount(USD)에 오늘 환율만 곱했고, 그러면 취득원가까지
+        // 오늘 환율로 환산한 셈이라 환차손익이 통째로 빠졌다 — 실현손익은 D-239에서
+        // 같은 이유로 이미 고쳤는데 평가손익만 남아 있던 것이다.
+        BigDecimal krwProfitAmount = null;
+        BigDecimal krwProfitRate = null;
+        if (asset.getCategory() == AssetCategory.FOREIGN_STOCK) {
+            if (krwEvaluationAmount != null) {
+                BigDecimal krwCostBasis = replayMovingAverage(asset, null, true, exchangeRate).cost();
+                krwProfitAmount = krwEvaluationAmount.subtract(krwCostBasis);
+                krwProfitRate = krwCostBasis.compareTo(BigDecimal.ZERO) > 0
+                        ? krwProfitAmount.divide(krwCostBasis, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
+                        : BigDecimal.ZERO;
+            }
+        } else {
+            // 원화 자산은 표시통화가 곧 원화라 두 값이 같다.
+            krwProfitAmount = profitAmount;
+            krwProfitRate = profitRate;
+        }
+
         return new HoldingResponse(
                 asset.getId(), asset.getAccount().getId(), asset.getSymbol(), asset.getName(),
                 asset.getCategory().name(), asset.getCurrency(), quantity, avgPrice,
                 currentPrice, evaluationAmount, profitAmount, profitRate,
-                exchangeRate, krwEvaluationAmount, exchangeRateBaseDate, asset.getSortOrder()
+                exchangeRate, krwEvaluationAmount, krwProfitAmount, krwProfitRate,
+                exchangeRateBaseDate, asset.getSortOrder()
         );
     }
 
@@ -544,7 +565,8 @@ public class AssetService {
                 asset.getId(), asset.getAccount().getId(), asset.getSymbol(), asset.getName(),
                 asset.getCategory().name(), asset.getCurrency(), balance, null,
                 null, balance, null, null,
-                exchangeRate, krwEvaluationAmount, exchangeRateBaseDate, asset.getSortOrder()
+                exchangeRate, krwEvaluationAmount, null, null,
+                exchangeRateBaseDate, asset.getSortOrder()
         );
     }
 

@@ -53,21 +53,28 @@ public class DashboardService {
             BigDecimal evalKrw;
             BigDecimal profit;
 
+            // 전량매도(보유수량 0)는 "시세를 못 불러서 빠진 자산"이 아니다. 제외로 세면
+            // 화면이 "N개가 합계에서 빠졌어요"라는 거짓 경보를 띄운다 — M7의 "정리한 자산"
+            // 섹션이 있어 정상 사용에서 늘 존재하는 상태다.
+            if (h.quantity() != null && h.quantity().compareTo(BigDecimal.ZERO) == 0) {
+                continue;
+            }
+
             // 원화환산이 필요한지는 카테고리가 아니라 통화로 판단한다 — 해외주식(USD)뿐 아니라
             // 외화 현금(USD)도 evaluationAmount가 원화가 아니어서 같은 규칙을 타야 한다.
             if (!"KRW".equals(h.currency())) {
                 if (h.krwEvaluationAmount() != null && h.exchangeRate() != null) {
                     evalKrw = h.krwEvaluationAmount();
-                    profit = h.profitAmount() != null
-                            ? h.profitAmount().multiply(h.exchangeRate())
-                            : BigDecimal.ZERO;
+                    // krwProfitAmount는 취득원가를 매수 시점 fx로 환산한 값이라 환차손익을 포함한다.
+                    // 이전의 profitAmount × 오늘환율은 취득원가까지 오늘 환율로 환산해버려 환차손익이 빠졌다.
+                    profit = h.krwProfitAmount() != null ? h.krwProfitAmount() : BigDecimal.ZERO;
                 } else {
                     excludedCount++;
                     continue;
                 }
             } else if (h.evaluationAmount() != null) {
                 evalKrw = h.evaluationAmount();
-                profit = h.profitAmount() != null ? h.profitAmount() : BigDecimal.ZERO;
+                profit = h.krwProfitAmount() != null ? h.krwProfitAmount() : BigDecimal.ZERO;
             } else {
                 excludedCount++;
                 continue;

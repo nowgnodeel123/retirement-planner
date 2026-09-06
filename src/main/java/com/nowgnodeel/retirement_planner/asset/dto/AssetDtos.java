@@ -88,6 +88,17 @@ public class AssetDtos {
             BigDecimal profitRate,
             BigDecimal exchangeRate,
             BigDecimal krwEvaluationAmount,
+            /**
+             * 원화 기준 평가손익. profitAmount는 표시통화(해외주식이면 USD) 기준이라
+             * 환차손익이 빠져 있다 — 취득원가를 매수 시점 fx로 환산해 다시 계산한 값이
+             * 이 필드다. 집계(대시보드·계좌 요약·프리필)는 반드시 이쪽을 쓴다.
+             *
+             * WHY 두 값을 같이 두나: "종목이 얼마 올랐나"(USD)와 "내 돈이 얼마 늘었나"(KRW)는
+             * 해외자산에서 서로 다른 질문이고, 자산 상세는 둘 다 보여줘야 한다.
+             * 국내자산은 두 값이 같고, 현금은 매입환율을 안 받으므로 둘 다 null이다.
+             */
+            BigDecimal krwProfitAmount,
+            BigDecimal krwProfitRate,
             String exchangeRateBaseDate,
             Integer sortOrder
     ) {}

@@ -58,6 +58,13 @@ public class SimulationPrefillService {
         int excludedCount = 0;
 
         for (HoldingResponse holding : assetService.findAllHoldingsByUser(userId)) {
+            // 전량매도(보유수량 0)는 제외 대상이 아니라 셈에서 빠지는 게 정상이다.
+            // 여기서 제외로 세면 경고 배너가 "자산이 덜 잡혔다"고 거짓말을 한다
+            // — 이 배너는 답이 과소평가됐다는 신호라 거짓 경보의 비용이 특히 크다.
+            if (holding.quantity() != null && holding.quantity().compareTo(BigDecimal.ZERO) == 0) {
+                continue;
+            }
+
             BigDecimal evalKrw = toKrwEvaluation(holding);
             if (evalKrw == null) {
                 excludedCount++;
