@@ -39,3 +39,6 @@ out/
 # 로컬 개발 설정(시크릿). fail-closed — config/ 전체를 막고 템플릿만 예외로 둔다.
 /config/*
 !/config/*.example
+
+### macOS ###
+.DS_Store
