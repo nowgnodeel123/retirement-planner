@@ -5,6 +5,7 @@ import com.nowgnodeel.retirement_planner.auth.oauth.OAuth2SuccessHandler;
 import com.nowgnodeel.retirement_planner.common.security.JwtAuthenticationFilter;
 import com.nowgnodeel.retirement_planner.common.security.JwtTokenProvider;
 import com.nowgnodeel.retirement_planner.common.security.RateLimitFilter;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,6 +41,14 @@ public class SecurityConfig {
     @Value("${app.cors.allowed-origins}")
     private List<String> allowedOrigins;
 
+    // 관리자 API(/api/admin/**)는 마스터 갱신 배치를 손으로 트리거하는 편의 엔드포인트다.
+    // users에 역할 컬럼이 없어 "로그인한 사용자 = 전부 통과"였고, 그 결과 가입만 하면
+    // 누구나 외부 API 쿼터를 태우고 DB에 쓸 수 있었다(data.go.kr은 개발계정 일일 한도라
+    // 제3자가 소진시키면 실사용자 시세가 같이 죽는다). 갱신 4건은 모두 @Scheduled로도
+    // 돌기 때문에 HTTP 경로를 막아도 운영에는 영향이 없다 — 기본 차단하고 로컬에서만 연다.
+    @Value("${app.admin-api.enabled:false}")
+    private boolean adminApiEnabled;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -51,10 +60,22 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/oauth2/**", "/login/**").permitAll()
-                        .anyRequest().authenticated()
-                )
+                .authorizeHttpRequests(auth -> {
+                    // ERROR 디스패치는 인가 대상에서 뺀다. 스프링 시큐리티 6은 기본적으로 모든
+                    // 디스패치 타입을 인가하는데, denyAll이 만든 403이 sendError로 ERROR 디스패치를
+                    // 일으키면 그 디스패치가 익명 컨텍스트로 다시 인가를 받아 또 거부되고,
+                    // 결국 응답이 403이 아니라 EntryPoint의 401로 덮어써진다(실측 확인).
+                    // 거부 자체는 어느 쪽이든 유지되지만 상태코드가 거짓말을 하게 되고,
+                    // 프론트 lib/api.ts는 401을 보면 토큰 갱신 후 재시도하므로 헛돈다.
+                    auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
+                    auth.requestMatchers("/api/auth/**", "/oauth2/**", "/login/**").permitAll();
+                    if (adminApiEnabled) {
+                        auth.requestMatchers("/api/admin/**").authenticated();
+                    } else {
+                        auth.requestMatchers("/api/admin/**").denyAll();
+                    }
+                    auth.anyRequest().authenticated();
+                })
                 // WHY: oauth2Login을 켜면 스프링이 "미인증 = 브라우저 사용자"로 보고 기본
                 // EntryPoint를 카카오 인가 URL로의 302 리다이렉트로 잡는다. 그런데 /api/**는
                 // fetch로 호출되는 JSON API라, 브라우저가 그 302를 따라가 카카오 도메인에

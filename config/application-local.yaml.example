@@ -39,6 +39,9 @@ price-api:
     key: ''
 
 app:
+  # 로컬에서는 마스터 갱신을 손으로 트리거할 수 있게 열어둔다(운영은 기본 false).
+  admin-api:
+    enabled: true
   cors:
     # 시크릿 아님. 빈 값으로 두면 application.yaml 의 기본값을 덮어써 CORS 가 깨진다.
     # 실기기 QA 시 맥 LAN IP 를 콤마로 덧붙인다(ipconfig getifaddr en0).
