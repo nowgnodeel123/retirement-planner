@@ -1,6 +1,6 @@
-package com.nowgnodeel.retirement_planner.repository;
+package com.nowgnodeel.retirement_planner.simulation.repository;
 
-import com.nowgnodeel.retirement_planner.entity.RetirementProfile;
+import com.nowgnodeel.retirement_planner.simulation.entity.RetirementProfile;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

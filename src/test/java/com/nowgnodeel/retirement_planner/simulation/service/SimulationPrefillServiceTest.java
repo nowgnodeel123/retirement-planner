@@ -1,11 +1,11 @@
-package com.nowgnodeel.retirement_planner.service;
+package com.nowgnodeel.retirement_planner.simulation.service;
 
 import com.nowgnodeel.retirement_planner.asset.entity.Account;
 import com.nowgnodeel.retirement_planner.asset.entity.AccountDetailType;
 import com.nowgnodeel.retirement_planner.asset.entity.AssetCategory;
 import com.nowgnodeel.retirement_planner.asset.repository.AccountRepository;
 import com.nowgnodeel.retirement_planner.asset.service.AssetService;
-import com.nowgnodeel.retirement_planner.dto.SimulationPrefillResponseDto;
+import com.nowgnodeel.retirement_planner.simulation.dto.SimulationPrefillResponseDto;
 import com.nowgnodeel.retirement_planner.user.entity.User;
 import com.nowgnodeel.retirement_planner.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;

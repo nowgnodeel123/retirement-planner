@@ -1,7 +1,7 @@
-package com.nowgnodeel.retirement_planner.service;
+package com.nowgnodeel.retirement_planner.simulation.service;
 
-import com.nowgnodeel.retirement_planner.dto.SimulationRequestDto;
-import com.nowgnodeel.retirement_planner.dto.SimulationResponseDto;
+import com.nowgnodeel.retirement_planner.simulation.dto.SimulationRequestDto;
+import com.nowgnodeel.retirement_planner.simulation.dto.SimulationResponseDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

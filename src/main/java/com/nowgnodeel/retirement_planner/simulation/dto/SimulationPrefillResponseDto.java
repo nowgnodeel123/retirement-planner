@@ -1,4 +1,4 @@
-package com.nowgnodeel.retirement_planner.dto;
+package com.nowgnodeel.retirement_planner.simulation.dto;
 
 /**
  * D-218: 은퇴 시뮬레이터 위저드 프리필. 사용자가 포트폴리오에 이미 입력한 자산을

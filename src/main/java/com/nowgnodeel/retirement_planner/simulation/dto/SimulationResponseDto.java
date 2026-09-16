@@ -1,4 +1,4 @@
-package com.nowgnodeel.retirement_planner.dto;
+package com.nowgnodeel.retirement_planner.simulation.dto;
 
 import lombok.Builder;
 import lombok.Getter;

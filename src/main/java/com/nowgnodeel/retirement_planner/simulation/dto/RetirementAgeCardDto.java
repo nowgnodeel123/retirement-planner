@@ -1,4 +1,4 @@
-package com.nowgnodeel.retirement_planner.dto;
+package com.nowgnodeel.retirement_planner.simulation.dto;
 
 /**
  * D-219: 포트폴리오 메인의 "은퇴 가능 나이" 카드 응답.

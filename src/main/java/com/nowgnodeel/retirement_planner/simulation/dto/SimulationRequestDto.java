@@ -1,4 +1,4 @@
-package com.nowgnodeel.retirement_planner.dto;
+package com.nowgnodeel.retirement_planner.simulation.dto;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;

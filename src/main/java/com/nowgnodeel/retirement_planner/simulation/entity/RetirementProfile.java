@@ -1,4 +1,4 @@
-package com.nowgnodeel.retirement_planner.entity;
+package com.nowgnodeel.retirement_planner.simulation.entity;
 
 import com.nowgnodeel.retirement_planner.user.entity.User;
 import jakarta.persistence.*;

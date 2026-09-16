@@ -1,12 +1,12 @@
-package com.nowgnodeel.retirement_planner.controller;
+package com.nowgnodeel.retirement_planner.simulation.controller;
 
-import com.nowgnodeel.retirement_planner.dto.RetirementAgeCardDto;
-import com.nowgnodeel.retirement_planner.dto.SimulationPrefillResponseDto;
-import com.nowgnodeel.retirement_planner.dto.SimulationRequestDto;
-import com.nowgnodeel.retirement_planner.dto.SimulationResponseDto;
-import com.nowgnodeel.retirement_planner.service.RetirementProfileService;
-import com.nowgnodeel.retirement_planner.service.SimulationPrefillService;
-import com.nowgnodeel.retirement_planner.service.SimulationService;
+import com.nowgnodeel.retirement_planner.simulation.dto.RetirementAgeCardDto;
+import com.nowgnodeel.retirement_planner.simulation.dto.SimulationPrefillResponseDto;
+import com.nowgnodeel.retirement_planner.simulation.dto.SimulationRequestDto;
+import com.nowgnodeel.retirement_planner.simulation.dto.SimulationResponseDto;
+import com.nowgnodeel.retirement_planner.simulation.service.RetirementProfileService;
+import com.nowgnodeel.retirement_planner.simulation.service.SimulationPrefillService;
+import com.nowgnodeel.retirement_planner.simulation.service.SimulationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

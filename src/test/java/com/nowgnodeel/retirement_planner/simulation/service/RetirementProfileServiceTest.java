@@ -1,10 +1,10 @@
-package com.nowgnodeel.retirement_planner.service;
+package com.nowgnodeel.retirement_planner.simulation.service;
 
-import com.nowgnodeel.retirement_planner.dto.RetirementAgeCardDto;
-import com.nowgnodeel.retirement_planner.dto.SimulationPrefillResponseDto;
-import com.nowgnodeel.retirement_planner.dto.SimulationRequestDto;
-import com.nowgnodeel.retirement_planner.entity.RetirementProfile;
-import com.nowgnodeel.retirement_planner.repository.RetirementProfileRepository;
+import com.nowgnodeel.retirement_planner.simulation.dto.RetirementAgeCardDto;
+import com.nowgnodeel.retirement_planner.simulation.dto.SimulationPrefillResponseDto;
+import com.nowgnodeel.retirement_planner.simulation.dto.SimulationRequestDto;
+import com.nowgnodeel.retirement_planner.simulation.entity.RetirementProfile;
+import com.nowgnodeel.retirement_planner.simulation.repository.RetirementProfileRepository;
 import com.nowgnodeel.retirement_planner.user.entity.User;
 import com.nowgnodeel.retirement_planner.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
