@@ -12,6 +12,7 @@
 # 루트 config/ 는 Spring 이 기본 탐색 경로로 잡으면서 JAR 에는 들어가지 않는다.
 #
 # 운영(Railway)은 이 파일을 쓰지 않는다 — 환경변수로 주입한다.
+# 배포용 환경변수 이름과 각 변수의 함정은 프로젝트 루트 .env.example 을 볼 것.
 # 새 값을 추가하면 config/application-local.yaml.example 에도 키를 넣을 것.
 
 spring:
@@ -46,3 +47,7 @@ app:
     # 시크릿 아님. 빈 값으로 두면 application.yaml 의 기본값을 덮어써 CORS 가 깨진다.
     # 실기기 QA 시 맥 LAN IP 를 콤마로 덧붙인다(ipconfig getifaddr en0).
     allowed-origins: http://localhost:3000
+
+# 배당 일정 조회(법인등록번호 조회)용. 없으면 배당 기능만 조용히 degrade된다.
+opendart:
+  api-key: ''
