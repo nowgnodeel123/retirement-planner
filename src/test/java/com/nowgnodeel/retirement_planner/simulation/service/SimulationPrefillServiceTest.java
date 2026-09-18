@@ -6,6 +6,8 @@ import com.nowgnodeel.retirement_planner.asset.entity.AssetCategory;
 import com.nowgnodeel.retirement_planner.asset.repository.AccountRepository;
 import com.nowgnodeel.retirement_planner.asset.service.AssetService;
 import com.nowgnodeel.retirement_planner.simulation.dto.SimulationPrefillResponseDto;
+import com.nowgnodeel.retirement_planner.simulation.entity.RetirementProfile;
+import com.nowgnodeel.retirement_planner.simulation.repository.RetirementProfileRepository;
 import com.nowgnodeel.retirement_planner.user.entity.User;
 import com.nowgnodeel.retirement_planner.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -35,6 +37,9 @@ class SimulationPrefillServiceTest {
     @Mock AssetService assetService;
     @Mock AccountRepository accountRepository;
     @Mock UserRepository userRepository;
+    // 이 테스트들은 포트폴리오 집계만 본다 — 저장된 프로필은 없는 상태(Optional.empty)가 기본.
+    // savedProfile 복원 자체는 아래 별도 테스트에서 확인한다.
+    @Mock RetirementProfileRepository retirementProfileRepository;
     @InjectMocks SimulationPrefillService simulationPrefillService;
 
     private static final Long USER_ID = 1L;
@@ -201,5 +206,83 @@ class SimulationPrefillServiceTest {
         assertThat(result.currentPensionSavingsBalance()).isZero();
         assertThat(result.excludedCount()).isZero();
         assertThat(result.excludedCashAmount()).isZero();
+    }
+
+    // ── 지난번 시뮬레이션 입력 복원 ──────────────────────────────────────────
+    // 저장 자체는 D-219부터 있었지만 되읽는 경로가 없어서, 사용자는 위저드를 열 때마다
+    // 월소득·목표 생활비 같은 "포트폴리오에서 파생될 수 없는" 값을 전부 다시 입력했다.
+
+    @Test
+    @DisplayName("시뮬레이션을 한 번도 안 돌렸으면 savedProfile은 null이다(0과 구분돼야 한다)")
+    void getPrefill_noSavedProfile() {
+        givenAccounts();
+        givenHoldings();
+        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+        given(retirementProfileRepository.findByUserId(USER_ID)).willReturn(Optional.empty());
+
+        assertThat(simulationPrefillService.getPrefill(USER_ID).savedProfile()).isNull();
+    }
+
+    @Test
+    @DisplayName("저장된 프로필이 있으면 지난번 입력값을 그대로 돌려준다(수익률은 소수 그대로)")
+    void getPrefill_returnsSavedProfile() {
+        givenAccounts();
+        givenHoldings();
+        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+        RetirementProfile profile = mock(RetirementProfile.class);
+        when(profile.getMonthlyIncome()).thenReturn(420.0);
+        when(profile.getTargetMonthlyExpense()).thenReturn(300.0);
+        when(profile.getPensionYearsPaid()).thenReturn(8);
+        when(profile.getPensionType()).thenReturn("DC");
+        when(profile.getYearsOfService()).thenReturn(6);
+        when(profile.getMonthlyIrpContribution()).thenReturn(30.0);
+        when(profile.getMonthlyPensionSavingsContribution()).thenReturn(25.0);
+        when(profile.getMonthlyStockInvestment()).thenReturn(50.0);
+        when(profile.getIrpReturnRate()).thenReturn(0.05);
+        when(profile.getPensionReturnRate()).thenReturn(0.04);
+        when(profile.getPensionSavingsReturnRate()).thenReturn(0.06);
+        when(profile.getStockReturnRate()).thenReturn(0.07);
+        when(profile.getDcCurrentBalanceManual()).thenReturn(1200.0);
+        when(profile.getIrpBalanceManual()).thenReturn(800.0);
+        when(profile.getPensionSavingsBalanceManual()).thenReturn(600.0);
+        when(profile.getStockAssetBalanceManual()).thenReturn(2000.0);
+        given(retirementProfileRepository.findByUserId(USER_ID)).willReturn(Optional.of(profile));
+
+        SimulationPrefillResponseDto.SavedProfile saved =
+                simulationPrefillService.getPrefill(USER_ID).savedProfile();
+
+        assertThat(saved).isNotNull();
+        assertThat(saved.monthlyIncome()).isEqualTo(420.0);
+        assertThat(saved.targetMonthlyExpense()).isEqualTo(300.0);
+        assertThat(saved.pensionYearsPaid()).isEqualTo(8);
+        assertThat(saved.pensionType()).isEqualTo("DC");
+        assertThat(saved.yearsOfService()).isEqualTo(6);
+        assertThat(saved.monthlyIrpContribution()).isEqualTo(30.0);
+        assertThat(saved.monthlyStockInvestment()).isEqualTo(50.0);
+        // %가 아니라 소수로 내려가야 한다 — 프론트가 100을 곱하는 쪽이라,
+        // 여기서 미리 %로 바꾸면 700%가 된다.
+        assertThat(saved.stockReturnRate()).isEqualTo(0.07);
+        assertThat(saved.dcCurrentBalance()).isEqualTo(1200.0);
+        assertThat(saved.stockAssetBalanceManual()).isEqualTo(2000.0);
+    }
+
+    @Test
+    @DisplayName("저장된 프로필이 있어도 포트폴리오 집계는 그대로다(둘은 서로 간섭하지 않는다)")
+    void getPrefill_savedProfileDoesNotAffectPortfolioTotals() {
+        givenAccounts(accountOf(NORMAL_ACC, AccountDetailType.NORMAL));
+        givenHoldings(krwHolding(NORMAL_ACC, AssetCategory.DOMESTIC_STOCK, "50000000"));
+        given(userRepository.findById(USER_ID)).willReturn(Optional.empty());
+
+        RetirementProfile profile = mock(RetirementProfile.class);
+        // 손입력 잔액이 포트폴리오 집계를 덮어쓰면 안 된다 — 우선순위 판단은 프론트/카드 쪽
+        // (resolveBalance)의 몫이고, 이 응답은 두 값을 각각 있는 그대로 담기만 한다.
+        when(profile.getStockAssetBalanceManual()).thenReturn(9999.0);
+        given(retirementProfileRepository.findByUserId(USER_ID)).willReturn(Optional.of(profile));
+
+        SimulationPrefillResponseDto result = simulationPrefillService.getPrefill(USER_ID);
+
+        assertThat(result.stockAssetBalance()).isEqualTo(5000L);
+        assertThat(result.savedProfile().stockAssetBalanceManual()).isEqualTo(9999.0);
     }
 }

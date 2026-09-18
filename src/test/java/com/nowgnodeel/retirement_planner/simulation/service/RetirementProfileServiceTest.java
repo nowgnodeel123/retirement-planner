@@ -40,7 +40,7 @@ class RetirementProfileServiceTest {
     private static final Long USER_ID = 1L;
 
     private SimulationPrefillResponseDto prefill(Integer age, long irp, long pensionSavings, long stock, int excluded) {
-        return new SimulationPrefillResponseDto(age, irp, pensionSavings, stock, excluded, 0L);
+        return new SimulationPrefillResponseDto(age, irp, pensionSavings, stock, excluded, 0L, null);
     }
 
     private RetirementProfile profile(double manualIrp, double manualStock) {
@@ -184,17 +184,19 @@ class RetirementProfileServiceTest {
     }
 
     @Test
-    @DisplayName("D-219: 빌더는 SimulationRequestDto의 필드 기본값(수익률 5/4/6/7%)을 지운다면 은퇴 나이가 크게 늦어진다 — 유지 확인")
+    @DisplayName("D-219: 빌더는 SimulationRequestDto의 필드 기본값(수익률 6/4/8/10%)을 지운다면 은퇴 나이가 크게 늦어진다 — 유지 확인")
     void builder_preservesFieldDefaults() {
         SimulationRequestDto req = SimulationRequestDto.builder()
                 .currentAge(34).monthlyIncome(350.0).pensionYearsPaid(3)
                 .monthlyIrpContribution(25.0).monthlyPensionSavingsContribution(50.0)
                 .targetMonthlyExpense(300.0).build();
 
-        assertThat(req.getIrpReturnRate()).isEqualTo(0.05);
+        // 이 값들은 화면 placeholder(위저드 입력칸의 "6"·"4"·"8"·"10")와 한 쌍이다.
+        // 한쪽만 바뀌면 화면이 말하는 값과 실제 계산이 갈리므로 여기서 같이 못 박는다.
+        assertThat(req.getIrpReturnRate()).isEqualTo(0.06);
         assertThat(req.getPensionReturnRate()).isEqualTo(0.04);
-        assertThat(req.getPensionSavingsReturnRate()).isEqualTo(0.06);
-        assertThat(req.getStockReturnRate()).isEqualTo(0.07);
+        assertThat(req.getPensionSavingsReturnRate()).isEqualTo(0.08);
+        assertThat(req.getStockReturnRate()).isEqualTo(0.10);
         assertThat(req.getPensionType()).isEqualTo("DC");
         assertThat(req.getNationalPensionReceiptType()).isEqualTo("NORMAL");
     }

@@ -83,6 +83,20 @@ public class SimulationService {
     // POST_RETIREMENT_NOMINAL_RATE(3%), 표준편차 8%인 정규분포에서 뽑아 1,000번
     // 반복 — 은퇴 후 보수적 자산배분을 가정한 표준편차이며, 실제 포트폴리오의
     // 변동성과 다를 수 있는 모델링 가정임을 응답에 항상 명시한다.
+    //
+    // ⚠ 이 모델이 표현하지 못하는 것(SimulationAccuracyAuditTest에서 실측):
+    //   (1) **은퇴 전 적립기에는 변동성이 아예 없다.** 적립은 사용자가 고른 수익률로
+    //       매년 똑같이 복리 성장한다. 닷컴버블(2000~02)·리먼(2008)은 전형적인 사용자의
+    //       적립기에 일어나는데, 그 구간의 급락과 회복 순서(sequence of returns risk)가
+    //       계산에 전혀 들어가지 않는다. 몬테카를로는 은퇴 "후" 구간에만 돈다.
+    //   (2) **정규분포는 역사적 폭락을 사실상 못 만든다.** 평균 3%/표준편차 8%에서
+    //       -37%(S&P500 2008)는 5.0시그마로 확률 2.9e-7, 1,000회 시행 중 한 번이라도
+    //       나올 확률이 **0.029%**다. KOSPI 2000(-49%)은 6.5시그마로 2.5e10회당 1회.
+    //       즉 "성공률 90%"는 폭락이 없다는 전제에서의 90%다.
+    //   (3) 아래 MIN_ANNUAL_RETURN(-50%) 캡은 그래서 사실상 죽은 코드다 — 발동 확률
+    //       상한이 1.8e-11로, 이 분포에서는 도달 자체가 불가능하다. 의도(극단치 방어)를
+    //       살리려면 분포를 t분포나 역사적 부트스트랩으로 바꿔야 한다.
+    // 고치려면 거시 가정을 바꾸는 일이라 사용자 합의가 필요하다(백로그).
     private static final int MONTE_CARLO_RUNS = 1000;
     private static final double MONTE_CARLO_RETURN_STDDEV = 0.08;
     private static final double MONTE_CARLO_MIN_ANNUAL_RETURN = -0.5; // 단일 연도 -50% 하한(현실적 극단치 캡)
@@ -550,7 +564,15 @@ public class SimulationService {
      * {@link #MONTE_CARLO_RUNS}번 반복한다. 매 회차 90세까지 잔고가 버티면 성공.
      */
     private MonteCarloResult runMonteCarlo(SimulationRequestDto req, int retirementAge, MonteCarloInputs in) {
-        Random random = new Random();
+        // 시드를 입력에서 결정론적으로 만든다.
+        //
+        // WHY: new Random()은 매 호출마다 다른 난수열을 쓴다. 측정해보니 **같은 입력으로
+        // 10번 돌렸을 때 성공률이 48~54%로 6%p까지 흔들렸다.** 사용자가 아무것도 안 바꾸고
+        // 새로고침만 해도 "은퇴 성공 확률"이 달라 보이고, 포트폴리오 카드와 위저드 결과가
+        // 서로 다른 숫자를 말할 수도 있다 — 신뢰를 깎는 종류의 흔들림이다.
+        // 입력 해시를 시드로 쓰면 같은 입력 → 항상 같은 답이 되고, 입력이 바뀌면
+        // 난수열도 바뀌므로 특정 시드에 과적합되지도 않는다.
+        Random random = new Random(monteCarloSeed(req, retirementAge, in));
         int successCount = 0;
         double[] endingBalances = new double[MONTE_CARLO_RUNS];
 
@@ -595,6 +617,16 @@ public class SimulationService {
         );
     }
 
+    /** 입력이 같으면 같은 난수열을 쓰도록 만드는 시드. 계산에 쓰이는 값만 넣는다. */
+    private long monteCarloSeed(SimulationRequestDto req, int retirementAge, MonteCarloInputs in) {
+        return java.util.Objects.hash(
+                req.getCurrentAge(), req.getMonthlyIncome(), req.getTargetMonthlyExpense(),
+                req.getStockAssetBalance(), req.getMonthlyStockInvestment(), req.getStockReturnRate(),
+                retirementAge,
+                Math.round(in.liquidAtRetirement()), Math.round(in.midMonthlyAfterTaxTotal()),
+                Math.round(in.nationalMonthlyAfterTax()), in.pensionReceiptAge());
+    }
+
     private int percentileIndex(double p) {
         return Math.min(MONTE_CARLO_RUNS - 1, (int) (MONTE_CARLO_RUNS * p));
     }
@@ -631,6 +663,13 @@ public class SimulationService {
         return new MidAssets(dbOrDcLump, irpFv, psFv);
     }
 
+    /**
+     * 적립 미래가치. 납입은 **연 1회 기말**로 묶어 계산한다.
+     *
+     * 실제 납입은 매월이므로 한 해 안의 복리가 빠져 결과가 과소평가된다 — 30년/연 10%
+     * 기준 **약 4.3%** 작게 나온다(SimulationAccuracyAuditTest 실측). 방향이 보수적이라
+     * 그대로 두지만, "덜 나온다"는 사실은 알고 있어야 한다.
+     */
     private double accumulateFv(double currentBalance, double annualContribution, double rate, int years) {
         double existingFv = currentBalance > 0 ? currentBalance * Math.pow(1 + rate, years) : 0;
         double newFv = 0;

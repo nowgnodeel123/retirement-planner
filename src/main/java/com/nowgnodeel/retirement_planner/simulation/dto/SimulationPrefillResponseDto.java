@@ -39,5 +39,42 @@ public record SimulationPrefillResponseDto(
          * 계속 불어나는 것으로 계산된다. 현금까지 넣으면 30년 뒤 몇 배로 부풀려진 답이 나온다.
          * 0이 아니면 프론트가 "현금 N만원은 빼고 채웠어요"라고 안내한다.
          */
-        Long excludedCashAmount
-) {}
+        Long excludedCashAmount,
+
+        /**
+         * 지난번에 시뮬레이터를 돌렸을 때 사용자가 직접 입력한 값들(retirement_profiles).
+         * 한 번도 안 돌렸으면 null.
+         *
+         * WHY 필요한가: 월소득·목표 생활비·연금 납입 년수처럼 포트폴리오에서 파생될 수 없는
+         * 값들은 위저드를 다시 열 때마다 전부 다시 입력해야 했다. 저장은 D-219부터 이미
+         * 하고 있었는데 되읽는 경로가 없어서, 저장된 값이 대시보드 카드에만 쓰이고
+         * 정작 입력한 사람에게는 돌아오지 않았다.
+         *
+         * 잔액 3종은 여기서도 내려주되 위 prefill 값이 우선한다 — 포트폴리오에 실제 계좌가
+         * 있으면 그게 최신이고, 여기 담긴 건 "앱에 등록하지 않은 계좌"의 손입력분이다
+         * (V16 주석 및 RetirementProfileService.resolveBalance와 같은 규칙).
+         *
+         * 계산 결과는 담지 않는다 — 저장도 안 하고(D-050) 다시 계산하면 되는 값이다.
+         */
+        SavedProfile savedProfile
+) {
+    /** 수익률은 소수(0.07)로 내려간다 — 백엔드 저장 형식 그대로이고, %로 바꾸는 건 화면 몫이다. */
+    public record SavedProfile(
+            Double monthlyIncome,
+            Double targetMonthlyExpense,
+            Integer pensionYearsPaid,
+            String pensionType,
+            Integer yearsOfService,
+            Double monthlyIrpContribution,
+            Double monthlyPensionSavingsContribution,
+            Double monthlyStockInvestment,
+            Double irpReturnRate,
+            Double pensionReturnRate,
+            Double pensionSavingsReturnRate,
+            Double stockReturnRate,
+            Double dcCurrentBalance,
+            Double irpBalanceManual,
+            Double pensionSavingsBalanceManual,
+            Double stockAssetBalanceManual
+    ) {}
+}

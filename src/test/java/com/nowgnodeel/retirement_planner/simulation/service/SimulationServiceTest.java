@@ -39,6 +39,16 @@ class SimulationServiceTest {
         ReflectionTestUtils.setField(req, "monthlyIrpContribution", monthlyIrp);
         ReflectionTestUtils.setField(req, "monthlyPensionSavingsContribution", monthlyPensionSavings);
         ReflectionTestUtils.setField(req, "targetMonthlyExpense", targetMonthlyExpense);
+
+        // 수익률을 명시한다. 예전엔 DTO 필드 기본값에 기대고 있었는데, 그러면 화면에서
+        // 권장 수익률을 조정할 때마다 계산 공식은 그대로인데도 골든값이 통째로 깨진다
+        // (실제로 기본값을 5/4/6/7 → 6/4/8/10으로 올리자 이 파일에서만 3건이 깨졌다).
+        // 골든 테스트가 고정하려는 건 "입력이 같으면 답이 같은가"이므로 입력은 전부
+        // 테스트가 들고 있어야 한다. 아래 값은 골든값을 뽑을 당시의 기본값이다.
+        ReflectionTestUtils.setField(req, "irpReturnRate", 0.05);
+        ReflectionTestUtils.setField(req, "pensionReturnRate", 0.04);
+        ReflectionTestUtils.setField(req, "pensionSavingsReturnRate", 0.06);
+        ReflectionTestUtils.setField(req, "stockReturnRate", 0.07);
         return req;
     }
 

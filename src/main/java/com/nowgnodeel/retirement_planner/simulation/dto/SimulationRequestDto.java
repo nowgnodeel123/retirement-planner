@@ -54,19 +54,23 @@ public class SimulationRequestDto {
 
     // WHY 수익률 상한(연 100%): 프론트는 자릿수 캡으로 막지만 API 직접 호출은
     // 못 막는다. 비현실적 수익률로 오버플로우에 가까운 결과가 나오는 것을 방지. (검토 권고)
+    //
+    // 기본값은 화면 placeholder와 반드시 같아야 한다(IRP 6 / DC 4 / 연금저축 8 / 주식 10).
+    // 프론트 types.ts의 toDecimalRate defaultPercent와 한 쌍이다 — 한쪽만 고치면
+    // "화면이 말하는 값"과 "실제 계산에 들어가는 값"이 갈린다.
     @DecimalMin("0.0") @DecimalMax("1.0")
-    private Double irpReturnRate = 0.05;
+    private Double irpReturnRate = 0.06;
 
     @DecimalMin("0.0") @DecimalMax("1.0")
     private Double pensionReturnRate = 0.04;
 
     @DecimalMin("0.0") @DecimalMax("1.0")
-    private Double pensionSavingsReturnRate = 0.06;
+    private Double pensionSavingsReturnRate = 0.08;
 
     private Double stockAssetBalance = 0.0;
 
     @DecimalMin("0.0") @DecimalMax("1.0")
-    private Double stockReturnRate = 0.07;
+    private Double stockReturnRate = 0.10;
 
     private Double monthlyStockInvestment = 0.0;
 

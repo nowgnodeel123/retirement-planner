@@ -6,6 +6,8 @@ import com.nowgnodeel.retirement_planner.asset.entity.AssetCategory;
 import com.nowgnodeel.retirement_planner.asset.repository.AccountRepository;
 import com.nowgnodeel.retirement_planner.asset.service.AssetService;
 import com.nowgnodeel.retirement_planner.simulation.dto.SimulationPrefillResponseDto;
+import com.nowgnodeel.retirement_planner.simulation.entity.RetirementProfile;
+import com.nowgnodeel.retirement_planner.simulation.repository.RetirementProfileRepository;
 import com.nowgnodeel.retirement_planner.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -43,6 +45,9 @@ public class SimulationPrefillService {
     private final AssetService assetService;
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
+    // 리포지토리를 직접 잡는다 — RetirementProfileService는 이 클래스를 이미 의존하고 있어서
+    // 서비스끼리 부르면 순환 의존이 된다.
+    private final RetirementProfileRepository retirementProfileRepository;
 
     public SimulationPrefillResponseDto getPrefill(Long userId) {
         // 소유자 검증: 계좌·보유자산 모두 userId로 스코프된 조회만 사용한다(원칙 — 서비스 계층에서 강제).
@@ -98,7 +103,39 @@ public class SimulationPrefillService {
                 toManWon(pensionSavings),
                 toManWon(stock),
                 excludedCount,
-                toManWon(excludedCash)
+                toManWon(excludedCash),
+                resolveSavedProfile(userId)
+        );
+    }
+
+    /**
+     * 지난번 시뮬레이션 입력. 소유자 검증은 userId 스코프 조회 하나로 강제한다.
+     * 한 번도 안 돌렸으면 null — 프론트가 "없음"과 "0"을 구분할 수 있어야 한다.
+     */
+    private SimulationPrefillResponseDto.SavedProfile resolveSavedProfile(Long userId) {
+        return retirementProfileRepository.findByUserId(userId)
+                .map(this::toSavedProfile)
+                .orElse(null);
+    }
+
+    private SimulationPrefillResponseDto.SavedProfile toSavedProfile(RetirementProfile p) {
+        return new SimulationPrefillResponseDto.SavedProfile(
+                p.getMonthlyIncome(),
+                p.getTargetMonthlyExpense(),
+                p.getPensionYearsPaid(),
+                p.getPensionType(),
+                p.getYearsOfService(),
+                p.getMonthlyIrpContribution(),
+                p.getMonthlyPensionSavingsContribution(),
+                p.getMonthlyStockInvestment(),
+                p.getIrpReturnRate(),
+                p.getPensionReturnRate(),
+                p.getPensionSavingsReturnRate(),
+                p.getStockReturnRate(),
+                p.getDcCurrentBalanceManual(),
+                p.getIrpBalanceManual(),
+                p.getPensionSavingsBalanceManual(),
+                p.getStockAssetBalanceManual()
         );
     }
 
