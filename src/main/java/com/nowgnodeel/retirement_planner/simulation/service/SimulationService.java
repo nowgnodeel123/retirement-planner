@@ -394,9 +394,9 @@ public class SimulationService {
         long nationalAtRetirementAfterTax = Math.round(nationalMonthlyAfterTax * nationalInflationToRetirement);
 
         // ── LIQUID: 은퇴나이부터 90세까지 gap-filling drawdown ──
-        double liquidAtRetirement = accumulateFv(
+        double liquidAtRetirement = accumulateFvMonthly(
                 req.getStockAssetBalance(),
-                req.getMonthlyStockInvestment() * 12,
+                req.getMonthlyStockInvestment(),
                 req.getStockReturnRate(),
                 yearsUntilRetirement);
         double costBasis = req.getStockAssetBalance() + req.getMonthlyStockInvestment() * 12 * yearsUntilRetirement;
@@ -645,9 +645,10 @@ public class SimulationService {
         int yearsUntilRetirement = candidateAge - req.getCurrentAge();
 
         double dbOrDcLump = calculateRetirementLumpSum(req, yearsUntilRetirement, candidateAge);
-        double irpFv = accumulateFv(req.getCurrentIrpBalance(), req.getMonthlyIrpContribution() * 12,
+        double irpFv = accumulateFvMonthly(req.getCurrentIrpBalance(), req.getMonthlyIrpContribution(),
                 req.getIrpReturnRate(), yearsUntilRetirement);
-        double psFv = accumulateFv(req.getCurrentPensionSavingsBalance(), req.getMonthlyPensionSavingsContribution() * 12,
+        double psFv = accumulateFvMonthly(req.getCurrentPensionSavingsBalance(),
+                req.getMonthlyPensionSavingsContribution(),
                 req.getPensionSavingsReturnRate(), yearsUntilRetirement);
 
         if (candidateAge < MID_UNLOCK_AGE) {
@@ -664,19 +665,34 @@ public class SimulationService {
     }
 
     /**
-     * 적립 미래가치. 납입은 **연 1회 기말**로 묶어 계산한다.
+     * 적립 미래가치. 납입은 **매월 기말**로 계산한다.
      *
-     * 실제 납입은 매월이므로 한 해 안의 복리가 빠져 결과가 과소평가된다 — 30년/연 10%
-     * 기준 **약 4.3%** 작게 나온다(SimulationAccuracyAuditTest 실측). 방향이 보수적이라
-     * 그대로 두지만, "덜 나온다"는 사실은 알고 있어야 한다.
+     * 예전에는 월 납입을 연 1회 기말납입으로 묶어 계산했는데, 그러면 한 해 안의 복리가
+     * 통째로 빠져서 30년/연 10% 기준 약 4.5% 작게 나왔다. 방향이 보수적이라 그대로 뒀었지만,
+     * 실제로 매달 넣는 돈을 연말에 한 번 넣는 것처럼 계산하는 건 "안전한 가정"이 아니라
+     * 그냥 틀린 모델이다 — 적정선을 보여주는 게 이 화면의 목적이므로 월 복리로 바꿨다.
+     *
+     * 월 수익률은 (1+r)^(1/12)−1 (실효). r/12(명목)를 쓰면 연 환산 수익률이 입력값보다
+     * 커져서, 사용자가 고른 "연 6%"가 실제로는 연 6.17%로 계산된다.
+     *
+     * 납입 시점은 매월 **기말**이다(기초로 잡으면 한 달치 수익이 더 붙는다).
+     * 급여일에 넣는 돈이 그 달 내내 굴러가지는 않으므로 기말이 실제에 가깝다.
+     *
+     * @param monthlyContribution 월 납입액(만원). 연액이 아니다 — 예전 시그니처는 연액을
+     *                            받아 내부에서 다시 12로 나눴는데, 호출부가 월액에 12를
+     *                            곱해 넘기고 있어서 그 왕복 자체가 단위 착오의 원인이었다.
      */
-    private double accumulateFv(double currentBalance, double annualContribution, double rate, int years) {
-        double existingFv = currentBalance > 0 ? currentBalance * Math.pow(1 + rate, years) : 0;
+    private double accumulateFvMonthly(double currentBalance, double monthlyContribution,
+                                       double annualRate, int years) {
+        double existingFv = currentBalance > 0 ? currentBalance * Math.pow(1 + annualRate, years) : 0;
+
         double newFv = 0;
-        if (annualContribution > 0 && years > 0) {
-            newFv = rate != 0
-                    ? annualContribution * (Math.pow(1 + rate, years) - 1) / rate
-                    : annualContribution * years;
+        if (monthlyContribution > 0 && years > 0) {
+            int months = years * 12;
+            double monthlyRate = Math.pow(1 + annualRate, 1.0 / 12) - 1;
+            newFv = monthlyRate != 0
+                    ? monthlyContribution * (Math.pow(1 + monthlyRate, months) - 1) / monthlyRate
+                    : monthlyContribution * months;
         }
         return existingFv + newFv;
     }

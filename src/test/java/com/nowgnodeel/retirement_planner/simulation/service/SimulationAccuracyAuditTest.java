@@ -50,17 +50,18 @@ class SimulationAccuracyAuditTest {
     // ────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("감사1: IRP 적립액이 연금 미래가치 공식(기말납입)과 일치한다")
-    void audit_accumulationMatchesAnnuityFormula() {
-        // 34세 → 은퇴까지 굴린 IRP를 손계산과 대조한다.
-        // 기존잔액 0, 월 25만원(연 300만원), 연 6%.
-        double annual = 300.0, rate = 0.06;
+    @DisplayName("감사1: 적립액이 월 기말납입 연금 미래가치 공식과 일치한다")
+    void audit_accumulationMatchesMonthlyAnnuityFormula() {
+        // 기존잔액 0, 월 25만원, 연 6%. 구현을 안 보고 금융 공식으로 따로 계산해 맞춘다.
+        double monthly = 25.0, rate = 0.06;
 
         for (int years : new int[]{10, 20, 30}) {
-            // 기말납입 연금 미래가치: PMT × ((1+r)^n − 1) / r
-            double expected = annual * (Math.pow(1 + rate, years) - 1) / rate;
+            int months = years * 12;
+            double i = Math.pow(1 + rate, 1.0 / 12) - 1;
+            double expected = monthly * (Math.pow(1 + i, months) - 1) / i;
+
             double actual = (double) ReflectionTestUtils.invokeMethod(
-                    simulationService, "accumulateFv", 0.0, annual, rate, years);
+                    simulationService, "accumulateFvMonthly", 0.0, monthly, rate, years);
             assertThat(actual)
                     .as("%d년 적립", years)
                     .isCloseTo(expected, org.assertj.core.data.Offset.offset(0.01));
@@ -68,25 +69,26 @@ class SimulationAccuracyAuditTest {
     }
 
     @Test
-    @DisplayName("감사2: 월납입을 연 1회 기말납입으로 묶어 계산한다 — 실제보다 보수적(과소)으로 나온다")
-    void audit_monthlyContributionTreatedAsAnnual_underestimates() {
-        double annual = 300.0, rate = 0.10;
+    @DisplayName("감사2: 월 납입이 실제 월 복리로 계산된다 — 예전의 4%대 과소평가가 해소됐다")
+    void audit_monthlyContributionNoLongerUnderestimates() {
+        double monthly = 25.0, rate = 0.10;
         int years = 30;
 
         double asImplemented = (double) ReflectionTestUtils.invokeMethod(
-                simulationService, "accumulateFv", 0.0, annual, rate, years);
+                simulationService, "accumulateFvMonthly", 0.0, monthly, rate, years);
 
-        // 실제 월납입(매월 25만원)의 미래가치 — 월 복리로 정확히 계산
-        double monthlyRate = Math.pow(1 + rate, 1.0 / 12) - 1;
-        int months = years * 12;
-        double trueMonthly = (annual / 12) * (Math.pow(1 + monthlyRate, months) - 1) / monthlyRate;
+        // 실제 월납입의 미래가치(독립 계산)
+        double i = Math.pow(1 + rate, 1.0 / 12) - 1;
+        double trueMonthly = monthly * (Math.pow(1 + i, years * 12) - 1) / i;
 
-        // 구현값이 실제보다 작다 = 보수적. 틀린 방향은 아니지만 오차는 존재한다.
-        assertThat(asImplemented).isLessThan(trueMonthly);
-        double errorPercent = (trueMonthly - asImplemented) / trueMonthly * 100;
-        System.out.printf("[감사2] 월납입 미반영 과소오차: %.2f%% (30년/연10%%: 구현 %.0f만원 vs 실제 %.0f만원)%n",
-                errorPercent, asImplemented, trueMonthly);
-        assertThat(errorPercent).isBetween(3.0, 6.0);
+        // 예전 구현(월납을 연말에 한 번 넣는 것으로 묶음)
+        double oldAnnualLump = (monthly * 12) * (Math.pow(1 + rate, years) - 1) / rate;
+
+        assertThat(asImplemented).isCloseTo(trueMonthly, org.assertj.core.data.Offset.offset(0.01));
+        double recovered = (trueMonthly - oldAnnualLump) / oldAnnualLump * 100;
+        System.out.printf("[감사2] 월 복리 반영 완료 — 예전 방식 대비 +%.2f%% (연납 %.0f → 월납 %.0f만원)%n",
+                recovered, oldAnnualLump, asImplemented);
+        assertThat(recovered).isBetween(4.0, 5.0);
     }
 
     // ────────────────────────────────────────────────────────────────

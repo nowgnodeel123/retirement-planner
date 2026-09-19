@@ -63,25 +63,29 @@ class SimulationServiceTest {
         // 915 → 938: 국민연금을 은퇴 첫해(69세) 기준으로 맞추면서 올랐다. 예전에는 요약이
         // 수급 개시(65세) 시점 값을 쓰고 차트만 물가연동분을 반영해, 같은 해를 두고 두
         // 숫자가 동시에 보였다.
-        assertThat(res.getSummary().getTotalMonthlyIncome()).isEqualTo(938);
+        // 938 → 947: 적립을 연 1회 기말납입에서 **월 기말납입**으로 바꾼 결과다.
+        // 늘어난 건 IRP(198→203)와 연금저축(168→172)뿐이고 국민연금·퇴직연금은 그대로다 —
+        // 국민연금은 확정 산식이고 DC 퇴직금은 원래 연 단위 적립이라 월 복리와 무관하다.
+        assertThat(res.getSummary().getTotalMonthlyIncome()).isEqualTo(947);
         // 목표는 입력값(오늘 250만원)과 은퇴 시점 환산값을 함께 내려준다. 명목 소득에서
         // 오늘 기준 목표를 빼던 예전 방식은 없는 여유를 만들어냈다.
         assertThat(res.getSummary().getTargetMonthlyExpense()).isEqualTo(250);
         assertThat(res.getSummary().getTargetMonthlyExpenseAtRetirement()).isEqualTo(655);
-        assertThat(res.getSummary().getMonthlyShortfall()).isEqualTo(938 - 655);
+        assertThat(res.getSummary().getMonthlyShortfall()).isEqualTo(947 - 655);
         // 219 → 242: 수급 개시(65세)가 아니라 은퇴 첫해(69세) 기준으로 통일한 결과다.
         // 4년치 물가연동(1.025^4 = 1.104)이 반영돼 차트 첫 점과 같은 값이 됐다.
         assertThat(res.getBreakdown().getNationalPension()).isEqualTo(242);
-        // 696은 퇴직연금·IRP·연금저축을 합친 값이었고 IRP·연금저축은 0으로 내려갔다.
-        // 셋으로 쪼갠 합이 예전 값과 같은지까지 고정해둔다(330 + 198 + 168 = 696).
+        // 퇴직연금·IRP·연금저축을 셋으로 쪼갠 합까지 고정해둔다(330 + 203 + 172 = 705).
+        // 월납 전환으로 IRP 198→203, 연금저축 168→172만 올랐다(각각 +2.5% 수준).
+        // 손계산 대조: IRP 월 30만원·연 5%·39년이면 연납 41,074 → 월납 42,008로 +2.27%.
         assertThat(res.getBreakdown().getRetirementPension()).isEqualTo(330);
-        assertThat(res.getBreakdown().getIrp()).isEqualTo(198);
-        assertThat(res.getBreakdown().getPensionSavings()).isEqualTo(168);
+        assertThat(res.getBreakdown().getIrp()).isEqualTo(203);
+        assertThat(res.getBreakdown().getPensionSavings()).isEqualTo(172);
         assertThat(res.getBreakdown().getRetirementPension()
                 + res.getBreakdown().getIrp()
-                + res.getBreakdown().getPensionSavings()).isEqualTo(696);
+                + res.getBreakdown().getPensionSavings()).isEqualTo(705);
         // 은퇴 시점 적립 총액(만원). 연금 계열 기준 나이는 max(은퇴나이, 55).
-        assertThat(res.getAccumulatedAssets().getTotal()).isEqualTo(140055);
+        assertThat(res.getAccumulatedAssets().getTotal()).isEqualTo(141935);
         assertThat(res.getAccumulatedAssets().getPensionUnlockAge()).isEqualTo(69);
         assertThat(res.getMeta().getYearsUntilRetirement()).isEqualTo(39);
         assertThat(res.getIncomeTimeline()).hasSize(21);
@@ -98,7 +102,7 @@ class SimulationServiceTest {
         // "feasible"이 첫해 흑자가 아니라 90세까지의 지속가능성을 뜻한다는 걸 고정해두는 케이스.
         assertThat(res.getSummary().getEstimatedRetirementAge()).isEqualTo(75);
         assertThat(res.getSummary().isFeasible()).isFalse();
-        assertThat(res.getSummary().getTotalMonthlyIncome()).isEqualTo(982); // 922 → 시나리오 A와 같은 이유
+        assertThat(res.getSummary().getTotalMonthlyIncome()).isEqualTo(993); // 982 → 월납 전환(시나리오 A와 같은 이유)
         assertThat(res.getSummary().getTargetMonthlyExpenseAtRetirement()).isEqualTo(839);
         assertThat(res.getIncomeTimeline()).hasSize(10);
     }
@@ -134,7 +138,7 @@ class SimulationServiceTest {
 
         var warning = res.getDependentStatusWarning();
         assertThat(warning.isAtRisk()).isTrue();
-        assertThat(warning.getEstimatedAnnualIncome()).isEqualTo(11724);
+        assertThat(warning.getEstimatedAnnualIncome()).isEqualTo(11844);
         assertThat(warning.getMessage()).contains("추정").contains("국민건강보험공단");
     }
 
