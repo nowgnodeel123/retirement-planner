@@ -1,5 +1,7 @@
 package com.nowgnodeel.retirement_planner.common.exception;
 
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -9,6 +11,8 @@ import java.util.Map;
 
 // 주의: 기존 controller/GlobalExceptionHandler.java(은퇴시뮬레이터용)와 별도.
 // 같은 예외 타입을 두 곳에서 잡지 않도록 겹치는지 확인 필요.
+// GlobalExceptionHandler의 catch-all(Exception.class)보다 반드시 먼저 조회되어야 한다.
+@Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
 public class AuthExceptionHandler {
 
