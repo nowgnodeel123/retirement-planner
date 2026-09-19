@@ -1,5 +1,6 @@
 package com.nowgnodeel.retirement_planner.simulation.service;
 
+import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
 import com.nowgnodeel.retirement_planner.simulation.dto.RetirementAgeCardDto;
 import com.nowgnodeel.retirement_planner.simulation.dto.SimulationPrefillResponseDto;
 import com.nowgnodeel.retirement_planner.simulation.dto.SimulationRequestDto;
@@ -39,7 +40,10 @@ public class RetirementProfileService {
      */
     @Transactional
     public void save(Long userId, SimulationRequestDto req) {
-        User user = userRepository.findById(userId).orElseThrow();
+        // 빈 orElseThrow()는 NoSuchElementException을 던져 catch-all에 걸려 500이 된다.
+        // 사용자가 없는 건 서버 오류가 아니라 404다.
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("사용자를 찾을 수 없습니다."));
         RetirementProfile incoming = toEntity(user, req);
 
         // 소유자 검증: userId로만 조회하므로 남의 프로필을 덮어쓸 경로가 없다.

@@ -6,6 +6,7 @@ import com.nowgnodeel.retirement_planner.asset.repository.AccountRepository;
 import com.nowgnodeel.retirement_planner.common.audit.AuditAction;
 import com.nowgnodeel.retirement_planner.common.audit.AuditLogging;
 import com.nowgnodeel.retirement_planner.common.exception.NotFoundException;
+import com.nowgnodeel.retirement_planner.user.entity.User;
 import com.nowgnodeel.retirement_planner.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,8 +30,16 @@ public class AccountService {
     @Transactional
     @AuditLogging(action = AuditAction.CREATE, entityType = "Account")
     public Response create(Long userId, CreateRequest request) {
+        // getReferenceById(지연 프록시)를 쓰면 사용자가 실제로 있는지 확인하지 않고 INSERT까지
+        // 간다. 탈퇴한 사용자의 액세스 토큰(최대 15분 생존)으로 계좌를 만들면 그때서야 FK
+        // 제약에 걸려 500 "일시적인 문제가 발생했어요"가 나갔다 — 서버 잘못이 아닌데
+        // 에러 로그에 스택트레이스까지 남는다. 실제 원인은 "그 사용자가 없다"이므로 404가 맞다.
+        // 계좌 생성은 드문 쓰기라 조회 한 번 더 하는 비용은 무시할 만하다.
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("사용자를 찾을 수 없습니다."));
+
         Account account = Account.builder()
-                .user(userRepository.getReferenceById(userId))  // 프록시 참조만, 추가 쿼리 없음
+                .user(user)
                 .name(request.name())
                 .institutionType(request.institutionType())
                 .detailType(request.detailType())
