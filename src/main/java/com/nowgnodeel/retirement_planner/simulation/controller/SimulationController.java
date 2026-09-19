@@ -18,13 +18,13 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/simulation")
 @RequiredArgsConstructor
 @Slf4j
-// WHY: origins="*"는 로컬 개발용. 배포 시 아무 사이트나 이 API를 호출해
-// 트래픽을 소모시킬 수 있으므로 실제 프론트 도메인으로 제한한다. (검토 A-2)
-// TODO: Vercel 배포 후 실제 도메인으로 교체
-@CrossOrigin(origins = {
-        "http://localhost:3000",
-        "https://YOUR-APP.vercel.app"
-})
+// CORS는 SecurityConfig의 전역 설정(app.cors.allowed-origins, D-225)이 "/**"에 걸어둔다.
+//
+// 예전엔 여기에 @CrossOrigin이 따로 있었고 그 안에 "https://YOUR-APP.vercel.app"이라는
+// **플레이스홀더가 배포된 채로 남아 있었다**("배포 후 실제 도메인으로 교체" TODO와 함께).
+// 허용 origin이 컨트롤러와 전역 설정 두 곳에 갈려 있으면, 도메인이 바뀔 때 한쪽만 고쳐도
+// 눈에 안 띄고 "이 화면만 CORS로 막힌다"는 형태로 나타난다 — 원인을 찾기 가장 어려운 종류다.
+// 환경변수 하나(APP_CORS_ALLOWED_ORIGINS)로 단일화한다.
 public class SimulationController {
 
     private final SimulationService simulationService;

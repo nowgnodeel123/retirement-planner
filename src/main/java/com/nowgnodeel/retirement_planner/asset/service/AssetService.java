@@ -440,10 +440,23 @@ public class AssetService {
      * 수량까지 평균에 남아 평단이 실제와 어긋났다 — 10주를 100에 사고 5주를 판 뒤
      * 10주를 200에 사면 실제 보유분 평단은 166.67인데 총평균은 150을 냈다.
      *
-     * M10: asset/profit 서브패키지의 실현손익 계산이 동일 평단을 재사용해야 해서 public으로 공개.
+     * 평단 표시의 단일 출처. 목록 화면(toHoldingResponse)도 이 메서드를 거친다 —
+     * 예전에는 같은 식(replayMovingAverage(...).averagePrice().setScale(4, HALF_UP))이
+     * 여기와 toHoldingResponse에 각각 적혀 있었다. 값이 같아서 문제가 드러나지 않았을 뿐,
+     * 한쪽만 고치면 조용히 갈라지는 구조였고 테스트는 화면이 안 쓰는 쪽만 덮고 있었다.
+     * (이 프로젝트에서 D-256·D-257로 반복된 "한 곳만 고치고 다른 곳은 그대로" 패턴이다.)
      */
     public BigDecimal calculateAveragePrice(Asset asset) {
-        return replayMovingAverage(asset, null, false, null)
+        return calculateAveragePrice(
+                transactionRepository.findAllByAssetIdOrderByTradeDateAscIdAsc(asset.getId()));
+    }
+
+    /**
+     * 이미 읽어둔 거래로 평단을 낸다. 목록 화면은 자산마다 거래를 한 번만 읽고
+     * 이 오버로드를 쓴다 — Asset 버전을 쓰면 자산 수만큼 쿼리가 늘어난다.
+     */
+    public BigDecimal calculateAveragePrice(List<Transaction> txs) {
+        return replayMovingAverage(txs, null, false, null)
                 .averagePrice()
                 .setScale(4, RoundingMode.HALF_UP);
     }
@@ -526,9 +539,7 @@ public class AssetService {
         }
 
         BigDecimal quantity = netQuantity(txs);
-        BigDecimal avgPrice = replayMovingAverage(txs, null, false, null)
-                .averagePrice()
-                .setScale(4, RoundingMode.HALF_UP);
+        BigDecimal avgPrice = calculateAveragePrice(txs);
         BigDecimal costBasis = avgPrice.multiply(quantity);
 
         BigDecimal currentPrice = null;
