@@ -84,22 +84,44 @@ public class SimulationService {
     // 반복 — 은퇴 후 보수적 자산배분을 가정한 표준편차이며, 실제 포트폴리오의
     // 변동성과 다를 수 있는 모델링 가정임을 응답에 항상 명시한다.
     //
-    // ⚠ 이 모델이 표현하지 못하는 것(SimulationAccuracyAuditTest에서 실측):
-    //   (1) **은퇴 전 적립기에는 변동성이 아예 없다.** 적립은 사용자가 고른 수익률로
-    //       매년 똑같이 복리 성장한다. 닷컴버블(2000~02)·리먼(2008)은 전형적인 사용자의
-    //       적립기에 일어나는데, 그 구간의 급락과 회복 순서(sequence of returns risk)가
-    //       계산에 전혀 들어가지 않는다. 몬테카를로는 은퇴 "후" 구간에만 돈다.
-    //   (2) **정규분포는 역사적 폭락을 사실상 못 만든다.** 평균 3%/표준편차 8%에서
-    //       -37%(S&P500 2008)는 5.0시그마로 확률 2.9e-7, 1,000회 시행 중 한 번이라도
-    //       나올 확률이 **0.029%**다. KOSPI 2000(-49%)은 6.5시그마로 2.5e10회당 1회.
-    //       즉 "성공률 90%"는 폭락이 없다는 전제에서의 90%다.
-    //   (3) 아래 MIN_ANNUAL_RETURN(-50%) 캡은 그래서 사실상 죽은 코드다 — 발동 확률
-    //       상한이 1.8e-11로, 이 분포에서는 도달 자체가 불가능하다. 의도(극단치 방어)를
-    //       살리려면 분포를 t분포나 역사적 부트스트랩으로 바꿔야 한다.
-    // 고치려면 거시 가정을 바꾸는 일이라 사용자 합의가 필요하다(백로그).
+    // 예전에는 두 가지를 표현하지 못했고, 둘 다 "성공률"을 실제보다 후하게 만들었다:
+    //   (1) **적립기에 변동성이 없었다.** 몬테카를로가 은퇴 "후"부터 시작해서, 은퇴 전
+    //       30~40년은 사용자가 고른 수익률로 매년 똑같이 복리 성장했다. 닷컴버블(2000~02)·
+    //       리먼(2008)은 전형적인 사용자의 적립기에 일어나는데, 그 구간의 급락과 회복
+    //       순서(sequence of returns risk)가 계산에 아예 안 들어갔다.
+    //       → 이제 몬테카를로는 **오늘부터** 돈다. 적립기에도 매년 수익률을 뽑아
+    //         주식/ETF 잔고를 굴리고 월 납입을 더한다.
+    //   (2) **정규분포가 역사적 폭락을 못 만들었다.** 평균 3%/표준편차 8%에서
+    //       -37%(S&P500 2008)는 5.0시그마로, 1,000회 시행 중 한 번이라도 나올 확률이
+    //       0.029%였다. 즉 "성공률 90%"는 폭락이 없다는 전제에서의 90%였다.
+    //       → Student-t(자유도 4)로 바꿨다. 꼬리가 두꺼워 폭락이 실제로 나온다.
+    //
+    // 연금 계열(국민연금·퇴직연금·IRP·연금저축)은 확정 산식이라 변동성을 넣지 않는다 —
+    // 이 모델에서 변동성이 있는 자산은 주식/ETF뿐이다.
+    //
+    // ⚠ 여전히 한계: 연도 간 수익률을 독립으로 뽑는다(실제 시장은 폭락 뒤 반등처럼
+    // 자기상관이 있다). 역사적 수익률 부트스트랩이 더 정확하지만 데이터 출처가 필요하다.
     private static final int MONTE_CARLO_RUNS = 1000;
     private static final double MONTE_CARLO_RETURN_STDDEV = 0.08;
-    private static final double MONTE_CARLO_MIN_ANNUAL_RETURN = -0.5; // 단일 연도 -50% 하한(현실적 극단치 캡)
+
+    /**
+     * 적립기 주식 수익률의 변동성(연 표준편차). 은퇴 후(8%)보다 크게 잡는다 —
+     * 적립기에는 주식 비중이 높고, 은퇴가 가까워질수록 보수적으로 옮겨가는 게 일반적이다.
+     * KOSPI·S&P500의 장기 연간 표준편차가 대략 18~20% 구간이다.
+     */
+    private static final double MONTE_CARLO_ACCUMULATION_STDDEV = 0.18;
+
+    /**
+     * Student-t 자유도. 낮을수록 꼬리가 두껍다.
+     * 4는 금융 수익률 모델링에서 흔히 쓰는 값으로, 정규분포라면 5시그마(3e-7)인 사건을
+     * 현실적인 빈도로 만들어낸다. 자유도가 3 이하면 분산이 발산에 가까워 불안정하다.
+     */
+    private static final double MONTE_CARLO_T_DF = 4.0;
+
+    /** 단일 연도 수익률 하한. t분포는 꼬리가 두꺼워 이 캡이 실제로 발동한다(예전엔 죽은 코드였다). */
+    private static final double MONTE_CARLO_MIN_ANNUAL_RETURN = -0.5;
+    /** 단일 연도 상한. 하한만 두면 분포가 위로만 열려 평균이 올라간다. */
+    private static final double MONTE_CARLO_MAX_ANNUAL_RETURN = 1.0;
 
     // ── 건강보험 피부양자 자격 상실 판정(M15/D-168) ──
     // WHY 100%: 위 NATIONAL_PENSION_INCOME_RATIO(0.5)는 "지역가입자 보험료 산정"에만
@@ -531,6 +553,16 @@ public class SimulationService {
             balance *= (1 + annualRate);
         }
 
+        /**
+         * 적립기 납입. 잔고와 취득원가가 **같은 금액만큼** 함께 늘어난다 —
+         * 넣은 돈은 그대로 원가이고 아직 수익이 아니기 때문이다.
+         * (인출 시 gainRatio가 이 둘의 비율로 계산되므로 한쪽만 올리면 양도세가 틀어진다.)
+         */
+        void contribute(double amount) {
+            balance += amount;
+            costBasis += amount;
+        }
+
         double balance() {
             return balance;
         }
@@ -559,9 +591,18 @@ public class SimulationService {
     ) {}
 
     /**
-     * 추정 은퇴나이 시점 스냅샷(mcInputs)에서 출발해, 은퇴 후 LIQUID 수익률만
-     * 확률분포로 대체하고 나머지(목표 생활비·연금)는 결정론적 모델 그대로 재사용해서
-     * {@link #MONTE_CARLO_RUNS}번 반복한다. 매 회차 90세까지 잔고가 버티면 성공.
+     * **오늘부터** 90세까지를 {@link #MONTE_CARLO_RUNS}번 시뮬레이션한다.
+     *
+     * 구간이 둘이다:
+     *   ① 적립기(현재 나이 → 은퇴 나이): 주식/ETF 잔고를 매년 뽑은 수익률로 굴리고
+     *      월 납입을 더한다. 예전에는 이 구간이 통째로 결정론이어서, 은퇴 시점 자산이
+     *      항상 "기대 경로" 하나뿐이었다 — 적립기 폭락이 성공률에 반영되지 않았다.
+     *   ② 인출기(은퇴 나이 → 90세): 목표 생활비에서 연금 소득을 뺀 부족분을 주식에서
+     *      인출하고, 남은 잔고를 다시 굴린다.
+     *
+     * 연금 계열(국민연금·퇴직연금·IRP·연금저축)은 확정 산식이라 결정론 값을 그대로 쓴다.
+     * 은퇴 나이 자체도 결정론 탐색 결과를 쓴다 — 이 지표는 "그 나이에 은퇴한다고 할 때
+     * 90세까지 버틸 확률"이지, 은퇴 나이를 다시 찾는 게 아니다.
      */
     private MonteCarloResult runMonteCarlo(SimulationRequestDto req, int retirementAge, MonteCarloInputs in) {
         // 시드를 입력에서 결정론적으로 만든다.
@@ -576,10 +617,23 @@ public class SimulationService {
         int successCount = 0;
         double[] endingBalances = new double[MONTE_CARLO_RUNS];
 
+        double annualStockContribution = req.getMonthlyStockInvestment() * 12;
+
         for (int run = 0; run < MONTE_CARLO_RUNS; run++) {
-            LiquidPortfolio liquid = new LiquidPortfolio(in.liquidAtRetirement(), in.costBasis());
+            // ── ① 적립기: 오늘 잔고에서 출발해 은퇴 나이까지 굴린다 ──
+            // 취득원가는 "넣은 돈의 합"이라 수익률과 무관하게 누적된다(양도세 계산용).
+            LiquidPortfolio liquid = new LiquidPortfolio(req.getStockAssetBalance(), req.getStockAssetBalance());
+            for (int age = req.getCurrentAge(); age < retirementAge; age++) {
+                double r = drawReturn(random, req.getStockReturnRate(), MONTE_CARLO_ACCUMULATION_STDDEV);
+                liquid.grow(r);
+                if (annualStockContribution > 0) {
+                    liquid.contribute(annualStockContribution);
+                }
+            }
+
             boolean solvent = true;
 
+            // ── ② 인출기 ──
             for (int age = retirementAge; age < LIFE_EXPECTANCY; age++) {
                 int yearsFromNow = age - req.getCurrentAge();
                 double targetAnnual = req.getTargetMonthlyExpense() * 12 * Math.pow(1 + INFLATION_RATE, yearsFromNow);
@@ -600,8 +654,7 @@ public class SimulationService {
                     }
                 }
 
-                double randomReturn = POST_RETIREMENT_NOMINAL_RATE + MONTE_CARLO_RETURN_STDDEV * random.nextGaussian();
-                liquid.grow(Math.max(randomReturn, MONTE_CARLO_MIN_ANNUAL_RETURN));
+                liquid.grow(drawReturn(random, POST_RETIREMENT_NOMINAL_RATE, MONTE_CARLO_RETURN_STDDEV));
             }
 
             if (solvent) successCount++;
@@ -615,6 +668,30 @@ public class SimulationService {
                 Math.round(endingBalances[percentileIndex(0.50)]),
                 Math.round(endingBalances[percentileIndex(0.90)])
         );
+    }
+
+    /**
+     * 연 수익률을 한 번 뽑는다. Student-t(자유도 {@link #MONTE_CARLO_T_DF})를 쓴다.
+     *
+     * WHY 정규분포가 아닌가: 평균 3%/표준편차 8% 정규분포에서 -37%(S&P500 2008)는
+     * 5.0시그마라 1,000회 시행 중 한 번이라도 나올 확률이 0.029%였다. 즉 모델이
+     * 리먼·닷컴급 폭락을 **구조적으로 만들지 못했고**, 그만큼 성공률이 후하게 나왔다.
+     *
+     * t분포 표본은 분산이 df/(df-2)배라, 표준편차가 입력한 stddev가 되도록 되돌려 곱한다.
+     * 그러지 않으면 자유도 4에서 실제 표준편차가 1.41배로 부풀어 의도한 변동성과 달라진다.
+     */
+    private double drawReturn(Random random, double mean, double stddev) {
+        double z = random.nextGaussian();
+        // 카이제곱(df) = 표준정규 df개의 제곱합. t = z / sqrt(chi2/df).
+        double chiSquare = 0;
+        for (int i = 0; i < (int) MONTE_CARLO_T_DF; i++) {
+            double n = random.nextGaussian();
+            chiSquare += n * n;
+        }
+        double t = z / Math.sqrt(chiSquare / MONTE_CARLO_T_DF);
+        double scale = Math.sqrt((MONTE_CARLO_T_DF - 2) / MONTE_CARLO_T_DF);
+        double raw = mean + stddev * t * scale;
+        return Math.max(MONTE_CARLO_MIN_ANNUAL_RETURN, Math.min(MONTE_CARLO_MAX_ANNUAL_RETURN, raw));
     }
 
     /** 입력이 같으면 같은 난수열을 쓰도록 만드는 시드. 계산에 쓰이는 값만 넣는다. */

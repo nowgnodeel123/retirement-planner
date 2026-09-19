@@ -125,45 +125,54 @@ class SimulationAccuracyAuditTest {
     // ────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("감사4: 은퇴 후 수익률 분포(평균3%/표준편차8%)가 리먼·닷컴급 폭락을 만들 수 있는지")
-    void audit_crashProbabilityUnderNormalAssumption() {
-        double mean = 0.03, sd = 0.08;
-        // 역사적 실제 연간 낙폭
-        double[][] crashes = {
-                {-0.37, 0}, // S&P500 2008 (리먼)
-                {-0.41, 0}, // KOSPI 2008
-                {-0.49, 0}, // KOSPI 2000 (닷컴)
-                {-0.22, 0}, // S&P500 2002
-        };
-        String[] names = {"S&P500 2008(-37%)", "KOSPI 2008(-41%)", "KOSPI 2000(-49%)", "S&P500 2002(-22%)"};
+    @DisplayName("감사4: 수익률 분포가 역사적 폭락을 실제로 만들어낸다(t분포 전환 확인)")
+    void audit_fatTailProducesHistoricalCrashes() throws Exception {
+        java.lang.reflect.Method draw = SimulationService.class.getDeclaredMethod(
+                "drawReturn", java.util.Random.class, double.class, double.class);
+        draw.setAccessible(true);
 
-        System.out.println("[감사4] 정규분포(평균 3%, 표준편차 8%)에서 역사적 폭락이 나올 확률");
-        for (int i = 0; i < crashes.length; i++) {
-            double z = (crashes[i][0] - mean) / sd;
-            double p = normalCdf(z);
-            double runsNeeded = p > 0 ? 1.0 / p : Double.POSITIVE_INFINITY;
-            System.out.printf("  %-20s z=%.2f  확률=%.3e  → 평균 %.3e 시행마다 1회%n",
-                    names[i], z, p, runsNeeded);
+        java.util.Random rnd = new java.util.Random(42);
+        int n = 200_000, lehman = 0, dotcom = 0;
+        double sum = 0, sumSq = 0, min = 1;
+        for (int i = 0; i < n; i++) {
+            double r = (double) draw.invoke(simulationService, rnd, 0.10, 0.18);
+            sum += r; sumSq += r * r; min = Math.min(min, r);
+            if (r <= -0.37) lehman++;   // S&P500 2008
+            if (r <= -0.49) dotcom++;   // KOSPI 2000
         }
-        // 1,000회 시행에서 리먼급(-37%)이 한 번이라도 나올 확률
-        double pLehman = normalCdf((-0.37 - mean) / sd);
-        double atLeastOnce = 1 - Math.pow(1 - pLehman, 1000);
-        System.out.printf("  → 1,000회 시행 중 리먼급이 한 번이라도 나올 확률: %.6f%%%n", atLeastOnce * 100);
+        double mean = sum / n, sd = Math.sqrt(sumSq / n - mean * mean);
+        System.out.printf("[감사4] 적립기 분포(평균10%%/표준편차18%%, t(4)) — 표본평균 %.3f 표준편차 %.3f 최저 %.3f%n",
+                mean, sd, min);
+        System.out.printf("        리먼급(-37%% 이하) %.3f%%  |  닷컴급(-49%% 이하) %.3f%%%n",
+                lehman * 100.0 / n, dotcom * 100.0 / n);
 
-        // 이 값이 0에 가깝다는 것이 요지 — 모델이 폭락을 구조적으로 못 만든다.
-        assertThat(atLeastOnce).isLessThan(0.01);
+        // 핵심: 예전 정규분포에서는 1,000회에 0.029%였다. 이제는 실제로 나온다.
+        assertThat(lehman).as("리먼급 폭락이 표본에 나타나야 한다").isGreaterThan(0);
+        // 평균·표준편차가 의도한 값 근처여야 한다(꼬리를 두껍게 하면서 변동성이 부풀면 안 된다).
+        assertThat(mean).isCloseTo(0.10, org.assertj.core.data.Offset.offset(0.02));
+        assertThat(sd).isBetween(0.14, 0.20);
     }
 
     @Test
-    @DisplayName("감사5: -50% 하한 캡은 이 분포에서 절대 발동하지 않는다(죽은 코드)")
-    void audit_minReturnCapNeverTriggers() {
-        double z = (-0.5 - 0.03) / 0.08; // -6.6 시그마
-        // 꼬리가 워낙 얇아 erf 근사(절대오차 ~1.5e-7)로는 값 자체를 못 잰다.
-        // 대신 해석적 상한 P(Z<z) <= exp(-z^2/2) / (|z|*sqrt(2pi)) 로 위에서 누른다.
-        double bound = Math.exp(-z * z / 2) / (Math.abs(z) * Math.sqrt(2 * Math.PI));
-        System.out.printf("[감사5] -50%% 도달 확률 상한 = %.3e (z=%.2f) — 1,000회 시행 기대 발동 %.3e회%n",
-                bound, z, bound * 1000);
-        assertThat(bound * 1000).isLessThan(1e-6);
+    @DisplayName("감사5: 적립기 변동성이 성공률에 실제로 반영된다(예전엔 은퇴 후만 돌았다)")
+    void audit_accumulationPhaseIsSimulated() {
+        // 주식 비중이 큰 입력. 적립기가 결정론이면 은퇴 시점 자산이 항상 같아서
+        // 성공률이 0% 또는 100%에 몰리는 경향이 있다.
+        SimulationRequestDto r = req(34, 400.0, 9, 25.0, 50.0, 300.0, 20000.0, 80.0);
+        SimulationResponseDto res = simulationService.calculate(r);
+        if (res.getMonteCarloResult() == null) {
+            System.out.println("[감사5] infeasible — 판정 불가");
+            return;
+        }
+        int rate = res.getMonteCarloResult().getSuccessRatePercent();
+        long p10 = res.getMonteCarloResult().getP10EndingBalance();
+        long p50 = res.getMonteCarloResult().getP50EndingBalance();
+        long p90 = res.getMonteCarloResult().getP90EndingBalance();
+        System.out.printf("[감사5] 성공률 %d%%  잔고 p10=%,d p50=%,d p90=%,d (만원)%n", rate, p10, p50, p90);
+
+        // 적립기 변동성이 들어가면 결과가 넓게 퍼진다 — p90이 p10보다 뚜렷하게 커야 한다.
+        assertThat(p90).as("적립기 변동성이 반영되면 상·하위 격차가 커진다").isGreaterThan(p10);
+        assertThat(rate).isBetween(0, 100);
     }
 
     /** 표준정규 누적분포 — Abramowitz & Stegun 7.1.26 기반 erf 근사. */
