@@ -1,0 +1,44 @@
+# 테스트 전용 설정.
+#
+# WHY 이 파일이 필요한가: application.yaml은 시크릿 6종을 기본값 없는 ${...}로 받는다.
+# 그래서 컨텍스트를 띄우는 테스트(@SpringBootTest)가 개발자 로컬 환경변수에 의존했고,
+# 환경변수 없이 `./gradlew test`를 돌리면 5건이 항상 실패했다 —
+# "원래 실패하는 테스트"가 상시 빨간불로 남아 진짜 실패를 가리는 상태였다.
+#
+# WHY 운영 yaml에 기본값을 넣지 않았나: D-268에서 환경변수 누락으로 배포가 6번 실패했는데,
+# 그때 얻은 교훈이 "누락은 부팅에서 터져야 한다"였다. 기본값을 넣으면 운영에서 키가 빠져도
+# 조용히 더미로 돌아간다. 테스트에서만 덮어쓰는 이 파일이 맞는 자리다.
+#
+# 여기 값은 전부 **형식만 맞는 더미**다. 실제 외부 API 호출은 테스트에서 일어나지 않는다
+# (호출하는 경로는 전부 목으로 대체되거나, 컨텍스트 로딩만 확인한다).
+spring:
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    org.hibernate.SQL: WARN
+    org.springframework.web: WARN
+
+jwt:
+  # HS256은 256비트(32바이트) 이상을 요구한다.
+  secret: test-only-jwt-secret-that-is-long-enough-for-hs256-abcdefghijklmnop
+
+pii:
+  # base64로 인코딩된 32바이트(AES-256). `openssl rand -base64 32` 형식.
+  encryption-key: bmVzdC10ZXN0LW9ubHktYWVzMjU2LWtleS0zMmJ5dGU=
+  migration:
+    enabled: false
+
+price-api:
+  data-go-kr:
+    key: test-data-go-kr-key
+  finnhub:
+    key: test-finnhub-key
+  koreaexim:
+    key: test-koreaexim-key
+
+opendart:
+  api-key: test-opendart-key
+
+spring.security.oauth2.client.registration.kakao.client-id: test-kakao-client-id
