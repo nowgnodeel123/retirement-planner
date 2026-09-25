@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.DecimalFormat;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -84,6 +85,10 @@ public class AssetService {
                 .build();
         transactionRepository.save(tx);
 
+        // D-240: 매수 대금을 같은 계좌·같은 통화 예수금에서 뺀다.
+        applyCashDelta(account, asset.getCurrency(),
+                cashDelta(TransactionType.BUY, tradeAmount(request.quantity(), request.unitPrice())));
+
         return toHoldingResponse(asset);
     }
 
@@ -117,6 +122,10 @@ public class AssetService {
                 .fx(asset.getCategory() == AssetCategory.FOREIGN_STOCK ? request.fx() : null)
                 .build();
         transactionRepository.save(tx);
+
+        // D-240: 매도 대금은 같은 통화 예수금으로 들어온다(매수 차감의 반대 방향).
+        applyCashDelta(asset.getAccount(), asset.getCurrency(),
+                cashDelta(TransactionType.SELL, tradeAmount(request.quantity(), request.unitPrice())));
 
         return toHoldingResponse(asset);
     }
@@ -152,8 +161,16 @@ public class AssetService {
                             + "). 매도 내역을 먼저 정리해주세요."); // D-057
         }
 
+        // D-240: 예수금은 거래에서 파생되는 값이 아니라 저장된 잔액이라, 거래를 고치면
+        // 그만큼 직접 보정해야 한다 — 예전 효과를 되돌리고 새 효과를 다시 넣는다.
+        BigDecimal cashAdjustment = cashDelta(tx.getType(),
+                        tradeAmount(request.quantity(), request.unitPrice()))
+                .subtract(cashDelta(tx.getType(), tradeAmount(tx.getQuantity(), tx.getUnitPrice())));
+
         tx.update(request.tradeDate(), request.quantity(), request.unitPrice(),
                 isForeignStock ? request.fx() : null);
+
+        applyCashDelta(asset.getAccount(), asset.getCurrency(), cashAdjustment);
 
         return toHoldingResponse(asset);
     }
@@ -174,7 +191,15 @@ public class AssetService {
                             + "). 매도 내역을 먼저 지워주세요."); // D-057
         }
 
+        // D-240: 지운 거래가 예수금에 남긴 효과를 되돌린다(매수였다면 되돌려받고,
+        // 매도였다면 들어왔던 대금을 도로 뺀다).
+        Asset asset = tx.getAsset();
+        BigDecimal cashAdjustment =
+                cashDelta(tx.getType(), tradeAmount(tx.getQuantity(), tx.getUnitPrice())).negate();
+
         transactionRepository.delete(tx);
+
+        applyCashDelta(asset.getAccount(), asset.getCurrency(), cashAdjustment);
     }
 
     /**
@@ -190,6 +215,67 @@ public class AssetService {
         return type == TransactionType.BUY ? quantity : quantity.negate();
     }
 
+    // ── D-240: 매매와 예수금 연동 ──────────────────────────────────────────────
+    //
+    // 왜 예수금만 직접 고치는가: 수량·평단·손익은 transactions에서 계산하는 파생값이라
+    // 거래만 고치면 전부 따라온다(D-050). 그런데 현금은 거래 이력이 없는 저장된 잔액이라
+    // (Asset.cash, upsertCash가 덮어쓰는 값) 매매가 일어나도 아무도 건드리지 않았다 —
+    // 예수금 100만원인 계좌에서 50만원어치를 사도 예수금이 그대로 100만원이라 총자산이
+    // 50만원 부풀어 보였다. 그래서 매매 시점에 잔액을 같은 금액만큼 직접 옮긴다.
+    //
+    // 세 가지 규칙(사용자 합의):
+    //  1) 예수금 자산이 등록돼 있을 때만 움직인다. 없는 계좌는 지금까지처럼 매매만 기록한다 —
+    //     예수금을 안 넣고 쓰던 계좌를 전부 막아버리는 것보다 낫다.
+    //  2) 같은 통화에서만 뺀다. 해외주식(USD)은 USD 예수금에서, 국내주식·코인(KRW)은
+    //     KRW 예수금에서. USD 예수금이 없으면 원화에서 환산해 빼지 않는다 —
+    //     그건 앱이 하지 않은 환전을 지어내는 것이라 시세·환율을 추정하지 않는 원칙과 같은 자리다.
+    //  3) 잔액이 음수가 되는 이동은 거부한다. 매수만이 아니라 "매도 내역 삭제"처럼
+    //     결과적으로 잔액을 깎는 모든 경로에 같은 규칙이 걸린다.
+
+    /** 거래 대금. cash 컬럼이 scale 2라 여기서 맞춰둔다(수량은 scale 8). */
+    private BigDecimal tradeAmount(BigDecimal quantity, BigDecimal unitPrice) {
+        return quantity.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** 매수는 예수금이 줄고(-), 매도는 늘어난다(+). */
+    private BigDecimal cashDelta(TransactionType type, BigDecimal amount) {
+        return type == TransactionType.BUY ? amount.negate() : amount;
+    }
+
+    private void applyCashDelta(Account account, String currency, BigDecimal delta) {
+        if (delta.signum() == 0) {
+            return;
+        }
+
+        Optional<Asset> found = assetRepository.findByAccountIdAndSymbol(account.getId(), currency)
+                .filter(a -> a.getCategory() == AssetCategory.CASH);
+        if (found.isEmpty()) {
+            return; // 규칙 1 — 예수금을 안 쓰는 계좌
+        }
+
+        Asset cashAsset = found.get();
+        BigDecimal balance = cashAsset.getCash() != null ? cashAsset.getCash() : BigDecimal.ZERO;
+        BigDecimal next = balance.add(delta);
+
+        if (next.signum() < 0) {
+            throw new IllegalArgumentException(
+                    currency + " 예수금이 부족해요 (필요 " + formatCash(delta.abs(), currency)
+                            + " · 잔액 " + formatCash(balance, currency)
+                            + "). 예수금을 먼저 수정한 뒤 다시 시도해주세요.");
+        }
+
+        cashAsset.updateCashBalance(next);
+    }
+
+    /** 오류 문구용 금액 표기. 지원 통화는 KRW·USD뿐이지만 나머지도 읽히게 둔다. */
+    private String formatCash(BigDecimal amount, String currency) {
+        if ("KRW".equals(currency)) {
+            return new DecimalFormat("#,##0").format(amount) + "원";
+        }
+        String formatted = new DecimalFormat("#,##0.00").format(amount);
+        return "USD".equals(currency) ? "$" + formatted : currency + " " + formatted;
+    }
+
     /** 자산 표시 이름 변경(계좌 이름 변경과 같은 성격). 종목코드는 건드리지 않는다. */
     @Transactional
     @AuditLogging(action = AuditAction.UPDATE, entityType = "Asset")
@@ -203,6 +289,11 @@ public class AssetService {
     /**
      * 자산 삭제. 거래·배당·입금은 FK ON DELETE CASCADE(V2)로 DB가 함께 지운다 —
      * 되돌릴 수 없으므로 프론트에서 확인 모달을 거친다(계좌 삭제와 동일 정책, D-056).
+     *
+     * D-240 예외: 여기서는 예수금을 되돌리지 않는다. 거래 한 건을 고치거나 지우는 것과 달리
+     * 자산 삭제는 "이 종목을 장부에서 통째로 없앤다"는 뜻이고, 순효과를 되돌리면 전량매도 후
+     * 정리하는 흔한 흐름에서 실현이익만큼 잔액이 깎여 삭제 자체가 막히는 일이 생긴다.
+     * 대신 예수금은 언제든 직접 수정할 수 있게 열려 있다(updateCashBalance).
      */
     @Transactional
     @AuditLogging(action = AuditAction.DELETE, entityType = "Asset")
